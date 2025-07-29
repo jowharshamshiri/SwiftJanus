@@ -712,7 +712,7 @@ public final class UnixSockAPIClient {
             commandId: commandId,
             channelId: channelId,
             success: true,
-            result: result.map { AnyCodable($0) }
+            result: result
         )
         
         await sendResponse(response, using: socketClient)

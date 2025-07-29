@@ -178,7 +178,7 @@ public class UnixDatagramClient {
     public func generateResponseSocketPath() -> String {
         let timestamp = Date().timeIntervalSince1970
         let pid = ProcessInfo.processInfo.processIdentifier
-        return "/tmp/swift_datagram_client_\\(pid)_\\(Int(timestamp * 1000000)).sock"
+        return "/tmp/swift_datagram_client_\(pid)_\(Int(timestamp * 1000000)).sock"
     }
     
     // MARK: - Private Methods
