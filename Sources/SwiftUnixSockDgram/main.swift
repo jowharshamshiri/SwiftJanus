@@ -2,6 +2,14 @@ import Foundation
 import ArgumentParser
 import SwiftUnixSockAPI
 
+struct StandardError: TextOutputStream {
+    func write(_ string: String) {
+        fputs(string, stderr)
+    }
+}
+
+var standardError = StandardError()
+
 @main
 struct UnixSockDgram: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
@@ -112,30 +120,42 @@ struct UnixSockDgram: AsyncParsableCommand {
     func sendDatagram(to target: String) async throws {
         print("Sending SOCK_DGRAM to: \(target)")
         
-        let client = try UnixDatagramClient(socketPath: target)
-        
-        // Create response socket path
-        let responseSocket = "/tmp/swift-response-\(ProcessInfo.processInfo.processIdentifier).sock"
-        
-        let args: [String: AnyCodable] = ["message": AnyCodable(message)]
-        
-        let cmd = SocketCommand(
-            id: generateId(),
-            channelId: "test",
-            command: command,
-            replyTo: responseSocket,
-            args: args.isEmpty ? nil : args,
-            timeout: 5.0,
-            timestamp: Date().timeIntervalSince1970
-        )
-        
-        let cmdData = try JSONEncoder().encode(cmd)
-        
-        // Send datagram and wait for response
-        let responseData = try await client.sendDatagram(cmdData, responseSocketPath: responseSocket)
-        
-        let response = try JSONDecoder().decode(SocketResponse.self, from: responseData)
-        print("Response: Success=\(response.success), Result=\(response.result ?? [:])")
+        do {
+            let client = try UnixDatagramClient(socketPath: target)
+            
+            // Create response socket path
+            let responseSocket = "/tmp/swift-response-\(ProcessInfo.processInfo.processIdentifier).sock"
+            
+            let args: [String: AnyCodable] = ["message": AnyCodable(message)]
+            
+            let cmd = SocketCommand(
+                id: generateId(),
+                channelId: "test",
+                command: command,
+                replyTo: responseSocket,
+                args: args.isEmpty ? nil : args,
+                timeout: 5.0,
+                timestamp: Date().timeIntervalSince1970
+            )
+            
+            let cmdData = try JSONEncoder().encode(cmd)
+            
+            // Send datagram and wait for response
+            let responseData = try await client.sendDatagram(cmdData, responseSocketPath: responseSocket)
+            
+            let response = try JSONDecoder().decode(SocketResponse.self, from: responseData)
+            print("Response: Success=\(response.success), Result=\(response.result ?? [:])")
+            
+        } catch UnixSockApiError.connectionTestFailed(let message) {
+            print("Connection failed: \(message)", to: &standardError)
+            UnixSockDgram.exit(withError: ExitCode.failure)
+        } catch UnixSockApiError.timeout(let message) {
+            print("Timeout: \(message)", to: &standardError)
+            UnixSockDgram.exit(withError: ExitCode.failure)
+        } catch {
+            print("Error: \(error)", to: &standardError)
+            UnixSockDgram.exit(withError: ExitCode.failure)
+        }
     }
     
     func sendResponse(commandId: String, channelId: String, command: String, args: [String: AnyCodable]?, replyTo: String) {

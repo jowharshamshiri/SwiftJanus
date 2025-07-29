@@ -86,7 +86,12 @@ public class UnixDatagramClient {
         }
         
         guard sendResult != -1 else {
-            throw UnixSockApiError.sendFailed("Failed to send datagram")
+            let errorCode = errno
+            if errorCode == ENOENT || errorCode == ECONNREFUSED {
+                throw UnixSockApiError.connectionTestFailed("Target socket does not exist or connection refused")
+            } else {
+                throw UnixSockApiError.sendFailed("Failed to send datagram: errno \(errorCode)")
+            }
         }
         
         // Receive response with timeout
@@ -132,7 +137,12 @@ public class UnixDatagramClient {
         }
         
         guard sendResult != -1 else {
-            throw UnixSockApiError.sendFailed("Failed to send datagram")
+            let errorCode = errno
+            if errorCode == ENOENT || errorCode == ECONNREFUSED {
+                throw UnixSockApiError.connectionTestFailed("Target socket does not exist or connection refused")
+            } else {
+                throw UnixSockApiError.sendFailed("Failed to send datagram: errno \(errorCode)")
+            }
         }
     }
     
