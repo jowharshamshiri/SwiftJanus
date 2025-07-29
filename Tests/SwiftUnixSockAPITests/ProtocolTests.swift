@@ -223,7 +223,7 @@ final class ProtocolTests: XCTestCase {
     
     func testSocketResponseSerialization() throws {
         let testError = SocketError(
-            code: 500,
+            code: "500",
             message: "Test error",
             details: ["context": AnyCodable("test context")]
         )
@@ -379,7 +379,7 @@ final class ProtocolTests: XCTestCase {
         for code in errorCodes {
             for message in errorMessages {
                 let error = SocketError(
-                    code: code,
+                    code: String(code),
                     message: message,
                     details: ["code": AnyCodable(code)]
                 )

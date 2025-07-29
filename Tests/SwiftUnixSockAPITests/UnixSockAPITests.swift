@@ -99,7 +99,7 @@ final class UnixSockAPITests: XCTestCase {
             commandId: "test-command-id",
             channelId: "testChannel",
             success: true,
-            result: AnyCodable(result)
+            result: result
         )
         
         let encoder = JSONEncoder()

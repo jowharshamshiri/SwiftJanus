@@ -98,7 +98,7 @@ final class EdgeCasesTests: XCTestCase {
     
     func testSocketResponseWithError() throws {
         let error = SocketError(
-            code: 500,
+            code: "500",
             message: "Internal server error",
             details: ["context": AnyCodable("test context")]
         )
@@ -119,7 +119,7 @@ final class EdgeCasesTests: XCTestCase {
         
         XCTAssertFalse(decodedResponse.success)
         XCTAssertNotNil(decodedResponse.error)
-        XCTAssertEqual(decodedResponse.error?.code, 500)
+        XCTAssertEqual(decodedResponse.error?.code, "500")
         XCTAssertEqual(decodedResponse.error?.message, "Internal server error")
     }
     
