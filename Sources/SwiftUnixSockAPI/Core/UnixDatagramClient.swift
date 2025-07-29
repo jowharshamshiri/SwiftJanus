@@ -88,7 +88,7 @@ public class UnixDatagramClient {
         guard sendResult != -1 else {
             let errorCode = errno
             if errorCode == ENOENT || errorCode == ECONNREFUSED {
-                throw UnixSockApiError.connectionTestFailed("Target socket does not exist or connection refused")
+                throw UnixSockApiError.connectionTestFailed("No such file or directory (target socket does not exist)")
             } else {
                 throw UnixSockApiError.sendFailed("Failed to send datagram: errno \(errorCode)")
             }
@@ -139,7 +139,7 @@ public class UnixDatagramClient {
         guard sendResult != -1 else {
             let errorCode = errno
             if errorCode == ENOENT || errorCode == ECONNREFUSED {
-                throw UnixSockApiError.connectionTestFailed("Target socket does not exist or connection refused")
+                throw UnixSockApiError.connectionTestFailed("No such file or directory (target socket does not exist)")
             } else {
                 throw UnixSockApiError.sendFailed("Failed to send datagram: errno \(errorCode)")
             }
