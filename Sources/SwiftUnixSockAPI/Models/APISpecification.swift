@@ -6,11 +6,13 @@ import Foundation
 /// Represents the complete API specification document
 public struct APISpecification: Codable, Sendable {
     public let version: String
+    public let name: String?
     public let channels: [String: ChannelSpec]
     public let models: [String: ModelSpec]?
     
-    public init(version: String, channels: [String: ChannelSpec], models: [String: ModelSpec]? = nil) {
+    public init(version: String, name: String? = nil, channels: [String: ChannelSpec], models: [String: ModelSpec]? = nil) {
         self.version = version
+        self.name = name
         self.channels = channels
         self.models = models
     }
@@ -18,10 +20,12 @@ public struct APISpecification: Codable, Sendable {
 
 /// Specification for a communication channel
 public struct ChannelSpec: Codable, Sendable {
+    public let name: String?
     public let description: String?
     public let commands: [String: CommandSpec]
     
-    public init(description: String? = nil, commands: [String: CommandSpec]) {
+    public init(name: String? = nil, description: String? = nil, commands: [String: CommandSpec]) {
+        self.name = name
         self.description = description
         self.commands = commands
     }
@@ -29,17 +33,20 @@ public struct ChannelSpec: Codable, Sendable {
 
 /// Specification for a command within a channel
 public struct CommandSpec: Codable, Sendable {
+    public let name: String?
     public let description: String?
     public let args: [String: ArgumentSpec]?
     public let response: ResponseSpec?
     public let errorCodes: [String: ErrorSpec]?
     
     public init(
+        name: String? = nil,
         description: String? = nil,
         args: [String: ArgumentSpec]? = nil,
         response: ResponseSpec? = nil,
         errorCodes: [String: ErrorSpec]? = nil
     ) {
+        self.name = name
         self.description = description
         self.args = args
         self.response = response

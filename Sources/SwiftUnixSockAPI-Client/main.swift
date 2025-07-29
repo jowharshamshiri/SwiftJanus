@@ -7,55 +7,23 @@ struct SwiftUnixSockAPIClient {
         // Parse command line arguments
         let arguments = CommandLine.arguments
         var socketPath = "/tmp/swift_test_server.sock"
+        var specPath = "test-api-spec.json"
         
-        // Look for --socket-path argument
+        // Parse command line arguments
         for i in 0..<arguments.count - 1 {
             if arguments[i] == "--socket-path" {
                 socketPath = arguments[i + 1]
-                break
+            } else if arguments[i] == "--spec" {
+                specPath = arguments[i + 1]
             }
         }
         
         print("Connecting Swift client to: \(socketPath)")
         
-        // Create API specification (matching server)
-        let pingCommand = CommandSpec(
-            description: "Simple ping command",
-            args: nil,
-            response: ResponseSpec(
-                type: .object,
-                properties: [
-                    "pong": ArgumentSpec(type: .boolean, description: "Ping response"),
-                    "timestamp": ArgumentSpec(type: .string, description: "Response timestamp")
-                ]
-            )
-        )
-        
-        let echoCommand = CommandSpec(
-            description: "Echo back input",
-            args: [
-                "message": ArgumentSpec(type: .string, required: true, description: "Message to echo")
-            ],
-            response: ResponseSpec(
-                type: .object,
-                properties: [
-                    "echo": ArgumentSpec(type: .string, description: "Echoed message")
-                ]
-            )
-        )
-        
-        let testChannel = ChannelSpec(
-            description: "Test channel",
-            commands: [
-                "ping": pingCommand,
-                "echo": echoCommand
-            ]
-        )
-        
-        let apiSpec = APISpecification(
-            version: "1.0.0",
-            channels: ["test": testChannel]
-        )
+        // Load API specification from file
+        let specData = try Data(contentsOf: URL(fileURLWithPath: specPath))
+        let parser = APISpecificationParser()
+        let apiSpec = try parser.parseJSON(specData)
         
         // Create client configuration
         let config = UnixSockAPIClientConfig.default
@@ -74,7 +42,6 @@ struct SwiftUnixSockAPIClient {
         do {
             let response = try await client.sendCommand(
                 "ping",
-                args: nil,
                 timeout: 5.0
             )
             

@@ -492,8 +492,77 @@ public final class UnixSockAPIClient {
         return commandId
     }
     
-    /// Start listening for commands on this channel (creates persistent connection for receiving)
+    /// Start listening for commands on this channel
+    /// Logic: if handlers registered -> create server socket, if no handlers -> client mode
     public func startListening() async throws {
+        // Check if we have handlers registered (expecting requests mode)
+        let hasHandlers = !commandHandlers.isEmpty
+        
+        if hasHandlers {
+            // Server mode: create Unix domain socket server and listen for connections
+            try await startServerMode()
+        } else {
+            // Client mode: connect to existing socket for receiving responses
+            try await startClientMode()
+        }
+    }
+    
+    /// Server mode: create Unix domain socket server and listen for connections
+    private func startServerMode() async throws {
+        // Remove existing socket file if it exists
+        try? FileManager.default.removeItem(atPath: socketPath)
+        
+        // Create Unix domain socket server using BSD sockets
+        let serverSocket = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard serverSocket != -1 else {
+            throw UnixSockAPIError.connectionRequired
+        }
+        
+        var serverAddr = sockaddr_un()
+        serverAddr.sun_family = sa_family_t(AF_UNIX)
+        
+        guard socketPath.count < MemoryLayout.size(ofValue: serverAddr.sun_path) else {
+            throw UnixSockAPIError.invalidSocketPath("Socket path too long")
+        }
+        
+        _ = withUnsafeMutableBytes(of: &serverAddr.sun_path) { ptr in
+            socketPath.withCString { cString in
+                strcpy(ptr.bindMemory(to: CChar.self).baseAddress, cString)
+            }
+        }
+        
+        let addrSize = MemoryLayout<sockaddr_un>.size
+        let bindResult = withUnsafePointer(to: &serverAddr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
+                bind(serverSocket, sockPtr, socklen_t(addrSize))
+            }
+        }
+        
+        guard bindResult == 0 else {
+            close(serverSocket)
+            throw UnixSockAPIError.connectionRequired
+        }
+        
+        guard listen(serverSocket, 5) == 0 else {
+            close(serverSocket)
+            throw UnixSockAPIError.connectionRequired
+        }
+        
+        // Accept connections in background task
+        Task {
+            while true {
+                let clientSocket = accept(serverSocket, nil, nil)
+                if clientSocket != -1 {
+                    Task {
+                        await self.handleServerConnection(clientSocket)
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Client mode: connect to existing socket for receiving responses
+    private func startClientMode() async throws {
         let socketClient = UnixSocketClient(socketPath: socketPath)
         
         try await socketClient.connect()
@@ -507,6 +576,27 @@ public final class UnixSockAPIClient {
         // Keep connection alive for listening
         // Note: In a real implementation, you might want to store this connection
         // and provide a way to stop listening
+    }
+    
+    /// Handle incoming connections in server mode
+    private func handleServerConnection(_ clientSocket: Int32) async {
+        defer { close(clientSocket) }
+        
+        var buffer = Data(count: Int(config.maxMessageSize))
+        let bufferSize = buffer.count
+        
+        while true {
+            let bytesRead = buffer.withUnsafeMutableBytes { ptr in
+                recv(clientSocket, ptr.baseAddress, bufferSize, 0)
+            }
+            
+            if bytesRead <= 0 {
+                break
+            }
+            
+            let data = buffer.prefix(bytesRead)
+            await handleIncomingMessage(data)
+        }
     }
     
     private func handleSingleCommandResponse(_ data: Data, commandId: String, continuation: CheckedContinuation<SocketResponse, Error>) async {

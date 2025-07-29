@@ -7,15 +7,17 @@ import Yams
 /// Parser for API specification documents
 public final class APISpecificationParser {
     
+    public init() {}
+    
     /// Parse API specification from JSON data
-    public static func parseJSON(_ data: Data) throws -> APISpecification {
+    public func parseJSON(_ data: Data) throws -> APISpecification {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode(APISpecification.self, from: data)
     }
     
     /// Parse API specification from JSON string
-    public static func parseJSON(_ jsonString: String) throws -> APISpecification {
+    public func parseJSON(_ jsonString: String) throws -> APISpecification {
         guard let data = jsonString.data(using: .utf8) else {
             throw APISpecificationError.invalidFormat("Invalid UTF-8 JSON string")
         }
@@ -23,7 +25,7 @@ public final class APISpecificationParser {
     }
     
     /// Parse API specification from YAML data
-    public static func parseYAML(_ data: Data) throws -> APISpecification {
+    public func parseYAML(_ data: Data) throws -> APISpecification {
         guard let yamlString = String(data: data, encoding: .utf8) else {
             throw APISpecificationError.invalidFormat("Invalid UTF-8 YAML data")
         }
@@ -31,7 +33,7 @@ public final class APISpecificationParser {
     }
     
     /// Parse API specification from YAML string
-    public static func parseYAML(_ yamlString: String) throws -> APISpecification {
+    public func parseYAML(_ yamlString: String) throws -> APISpecification {
         do {
             let decoder = YAMLDecoder()
             return try decoder.decode(APISpecification.self, from: yamlString)
@@ -41,7 +43,7 @@ public final class APISpecificationParser {
     }
     
     /// Parse API specification from file URL
-    public static func parseFromFile(at url: URL) throws -> APISpecification {
+    public func parseFromFile(at url: URL) throws -> APISpecification {
         let data = try Data(contentsOf: url)
         
         let fileExtension = url.pathExtension.lowercased()
