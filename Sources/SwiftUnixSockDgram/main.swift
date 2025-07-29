@@ -3,7 +3,7 @@ import ArgumentParser
 import SwiftUnixSockAPI
 
 @main
-struct UnixSockDgram: ParsableCommand {
+struct UnixSockDgram: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Unified SOCK_DGRAM Unix Socket Process"
     )
@@ -14,7 +14,7 @@ struct UnixSockDgram: ParsableCommand {
     @Flag(name: .long, help: "Listen for datagrams on socket")
     var listen: Bool = false
     
-    @Option(name: .long, help: "Send datagram to socket path")
+    @Option(name: [.customLong("send-to")], help: "Send datagram to socket path")
     var sendTo: String?
     
     @Option(name: .long, help: "Command to send")
@@ -126,7 +126,7 @@ struct UnixSockDgram: ParsableCommand {
             replyTo: responseSocket,
             args: args.isEmpty ? nil : args,
             timeout: 5.0,
-            timestamp: Date()
+            timestamp: Date().timeIntervalSince1970
         )
         
         let cmdData = try JSONEncoder().encode(cmd)
@@ -165,7 +165,7 @@ struct UnixSockDgram: ParsableCommand {
             success: success,
             result: result.isEmpty ? nil : result,
             error: success ? nil : SocketError(code: "UNKNOWN_COMMAND", message: "Unknown command", details: nil),
-            timestamp: Date()
+            timestamp: Date().timeIntervalSince1970
         )
         
         do {

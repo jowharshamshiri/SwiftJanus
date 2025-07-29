@@ -11,7 +11,7 @@ public struct SocketCommand: Codable, Sendable {
     public let replyTo: String?
     public let args: [String: AnyCodable]?
     public let timeout: TimeInterval?
-    public let timestamp: Date
+    public let timestamp: Double
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -30,7 +30,7 @@ public struct SocketCommand: Codable, Sendable {
         replyTo: String? = nil,
         args: [String: AnyCodable]? = nil,
         timeout: TimeInterval? = nil,
-        timestamp: Date = Date()
+        timestamp: Double = Date().timeIntervalSince1970
     ) {
         self.id = id
         self.channelId = channelId
@@ -49,7 +49,7 @@ public struct SocketResponse: Codable, Sendable {
     public let success: Bool
     public let result: [String: AnyCodable]?
     public let error: SocketError?
-    public let timestamp: Date
+    public let timestamp: Double
     
     public init(
         commandId: String,
@@ -57,7 +57,7 @@ public struct SocketResponse: Codable, Sendable {
         success: Bool,
         result: [String: AnyCodable]? = nil,
         error: SocketError? = nil,
-        timestamp: Date = Date()
+        timestamp: Double = Date().timeIntervalSince1970
     ) {
         self.commandId = commandId
         self.channelId = channelId
