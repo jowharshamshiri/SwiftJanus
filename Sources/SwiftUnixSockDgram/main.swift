@@ -148,13 +148,13 @@ struct UnixSockDgram: AsyncParsableCommand {
             
         } catch UnixSockApiError.connectionTestFailed(let message) {
             print("Connection failed: \(message)", to: &standardError)
-            UnixSockDgram.exit(withError: ExitCode.failure)
+            throw ExitCode.failure
         } catch UnixSockApiError.timeout(let message) {
             print("Timeout: \(message)", to: &standardError)
-            UnixSockDgram.exit(withError: ExitCode.failure)
+            throw ExitCode.failure
         } catch {
             print("Error: \(error)", to: &standardError)
-            UnixSockDgram.exit(withError: ExitCode.failure)
+            throw ExitCode.failure
         }
     }
     
