@@ -39,7 +39,8 @@ final class APISpecificationParserTests: XCTestCase {
         }
         """
         
-        let apiSpec = try APISpecificationParser.parseJSON(jsonString)
+        let parser = APISpecificationParser()
+        let apiSpec = try parser.parseJSON(jsonString)
         
         XCTAssertEqual(apiSpec.version, "1.0.0")
         XCTAssertEqual(apiSpec.channels.count, 1)
@@ -56,7 +57,7 @@ final class APISpecificationParserTests: XCTestCase {
         XCTAssertEqual(command.args?.count, 1)
         
         let arg = command.args!["id"]!
-        XCTAssertEqual(arg.type, .string)
+        XCTAssertEqual(arg.type, ArgumentType.string)
         XCTAssertTrue(arg.required)
     }
     
@@ -82,7 +83,8 @@ final class APISpecificationParserTests: XCTestCase {
                       required: false
         """
         
-        let apiSpec = try APISpecificationParser.parseYAML(yamlString)
+        let parser = APISpecificationParser()
+        let apiSpec = try parser.parseYAML(yamlString)
         
         XCTAssertEqual(apiSpec.version, "1.0.0")
         XCTAssertEqual(apiSpec.channels.count, 1)
@@ -226,7 +228,8 @@ final class APISpecificationParserTests: XCTestCase {
     func testParseInvalidJSON() {
         let invalidJson = "{ invalid json }"
         
-        XCTAssertThrowsError(try APISpecificationParser.parseJSON(invalidJson)) { error in
+        let parser = APISpecificationParser()
+        XCTAssertThrowsError(try parser.parseJSON(invalidJson)) { error in
             XCTAssertTrue(error is DecodingError)
         }
     }
@@ -238,7 +241,8 @@ final class APISpecificationParserTests: XCTestCase {
         try! "test content".write(to: tempURL, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL) }
         
-        XCTAssertThrowsError(try APISpecificationParser.parseFromFile(at: tempURL)) { error in
+        let parser = APISpecificationParser()
+        XCTAssertThrowsError(try parser.parseFromFile(at: tempURL)) { error in
             XCTAssertTrue(error is APISpecificationError)
             if case .unsupportedFormat(let format) = error as? APISpecificationError {
                 XCTAssertEqual(format, "txt")
@@ -266,7 +270,8 @@ final class APISpecificationParserTests: XCTestCase {
         try jsonContent.write(to: tempURL, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL) }
         
-        let apiSpec = try APISpecificationParser.parseFromFile(at: tempURL)
+        let parser = APISpecificationParser()
+        let apiSpec = try parser.parseFromFile(at: tempURL)
         
         XCTAssertEqual(apiSpec.version, "1.0.0")
         XCTAssertEqual(apiSpec.channels.count, 1)
@@ -287,7 +292,8 @@ final class APISpecificationParserTests: XCTestCase {
         try yamlContent.write(to: tempURL, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL) }
         
-        let apiSpec = try APISpecificationParser.parseFromFile(at: tempURL)
+        let parser = APISpecificationParser()
+        let apiSpec = try parser.parseFromFile(at: tempURL)
         
         XCTAssertEqual(apiSpec.version, "1.0.0")
         XCTAssertEqual(apiSpec.channels.count, 1)
