@@ -1,17 +1,17 @@
-// UnixSockAPIClientTests.swift
+// JanusClientTests.swift
 // Tests for high-level API client functionality
 
 import XCTest
-@testable import SwiftUnixSockAPI
+@testable import SwiftJanus
 
 @MainActor
-final class UnixSockAPIClientTests: XCTestCase {
+final class JanusClientTests: XCTestCase {
     
     var testSocketPath: String!
     var testAPISpec: APISpecification!
     
     override func setUpWithError() throws {
-        testSocketPath = "/tmp/unixsockapi-client-test.sock"
+        testSocketPath = "/tmp/janus-client-test.sock"
         
         // Clean up any existing test socket files
         try? FileManager.default.removeItem(atPath: testSocketPath)
@@ -26,7 +26,7 @@ final class UnixSockAPIClientTests: XCTestCase {
     }
     
     func testClientInitializationWithValidSpec() throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -37,14 +37,14 @@ final class UnixSockAPIClientTests: XCTestCase {
     
     func testClientInitializationWithInvalidChannel() {
         XCTAssertThrowsError(
-            try UnixSockAPIDatagramClient(
+            try JanusDatagramClient(
                 socketPath: testSocketPath,
                 channelId: "nonExistentChannel",
                 apiSpec: testAPISpec
             )
         ) { error in
-            XCTAssertTrue(error is UnixSockApiError)
-            if case .invalidChannel(let message) = error as? UnixSockApiError {
+            XCTAssertTrue(error is JanusError)
+            if case .invalidChannel(let message) = error as? JanusError {
                 XCTAssertTrue(message.contains("nonExistentChannel"))
             }
         }
@@ -57,20 +57,20 @@ final class UnixSockAPIClientTests: XCTestCase {
         )
         
         XCTAssertThrowsError(
-            try UnixSockAPIDatagramClient(
+            try JanusDatagramClient(
                 socketPath: testSocketPath,
                 channelId: "testChannel",
                 apiSpec: invalidSpec
             )
         ) { error in
-            // Should throw UnixSockApiError.invalidChannel because the channel doesn't exist
+            // Should throw JanusError.invalidChannel because the channel doesn't exist
             // This happens before API spec validation
-            XCTAssertTrue(error is UnixSockApiError)
+            XCTAssertTrue(error is JanusError)
         }
     }
     
     func testRegisterValidCommandHandler() throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -81,7 +81,7 @@ final class UnixSockAPIClientTests: XCTestCase {
     }
     
     func testRegisterInvalidCommandHandler() throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -93,7 +93,7 @@ final class UnixSockAPIClientTests: XCTestCase {
     }
     
     func testSocketCommandValidation() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -103,7 +103,7 @@ final class UnixSockAPIClientTests: XCTestCase {
         do {
             _ = try await client.sendCommand("getData")
             XCTFail("Expected missing required argument error")
-        } catch let error as UnixSockApiError {
+        } catch let error as JanusError {
             if case .missingRequiredArgument(let argName) = error {
                 XCTAssertEqual(argName, "id")
             } else if case .connectionTestFailed(_) = error {
@@ -119,7 +119,7 @@ final class UnixSockAPIClientTests: XCTestCase {
         do {
             _ = try await client.sendCommand("unknownCommand")
             XCTFail("Expected unknown command error")
-        } catch let error as UnixSockApiError {
+        } catch let error as JanusError {
             if case .unknownCommand(let commandName) = error {
                 XCTAssertEqual(commandName, "unknownCommand")
             } else if case .connectionTestFailed(_) = error {
@@ -133,7 +133,7 @@ final class UnixSockAPIClientTests: XCTestCase {
     }
     
     func testCommandMessageSerialization() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -149,9 +149,9 @@ final class UnixSockAPIClientTests: XCTestCase {
         // Should not throw for valid command and args
         do {
             _ = try await client.sendCommand("getData", args: args)
-        } catch UnixSockApiError.connectionError, UnixSockApiError.connectionRequired {
+        } catch JanusError.connectionError, JanusError.connectionRequired {
             // Expected - we're not connected to a server
-        } catch UnixSockApiError.connectionTestFailed {
+        } catch JanusError.connectionTestFailed {
             // Expected - connection test failed in SOCK_DGRAM architecture
         } catch {
             XCTFail("Unexpected error: \(error)")
@@ -159,13 +159,13 @@ final class UnixSockAPIClientTests: XCTestCase {
     }
     
     func testMultipleClientInstances() throws {
-        let client1 = try UnixSockAPIDatagramClient(
+        let client1 = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
         )
         
-        let client2 = try UnixSockAPIDatagramClient(
+        let client2 = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -180,7 +180,7 @@ final class UnixSockAPIClientTests: XCTestCase {
     }
     
     func testCommandHandlerWithAsyncOperations() throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -194,7 +194,7 @@ final class UnixSockAPIClientTests: XCTestCase {
     }
     
     func testCommandHandlerErrorHandling() throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -209,7 +209,7 @@ final class UnixSockAPIClientTests: XCTestCase {
     func testAPISpecWithComplexArguments() throws {
         let complexSpec = createComplexAPISpec()
         
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "complexChannel",
             apiSpec: complexSpec
@@ -223,7 +223,7 @@ final class UnixSockAPIClientTests: XCTestCase {
     func testArgumentValidationConstraints() throws {
         let spec = createSpecWithValidation()
         
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "validationChannel",
             apiSpec: spec

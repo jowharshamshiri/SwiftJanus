@@ -1,5 +1,5 @@
 // APISpecification.swift
-// API specification models for UnixSockAPI
+// API specification models for Janus
 
 import Foundation
 

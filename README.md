@@ -1,4 +1,4 @@
-# SwiftUnixSockAPI
+# SwiftJanus
 
 A **production-ready**, **enterprise-grade** Swift library for Unix socket-based API communication with security features, comprehensive attack prevention, and bulletproof reliability. Designed for secure inter-process communication in production environments.
 
@@ -31,11 +31,11 @@ A **production-ready**, **enterprise-grade** Swift library for Unix socket-based
 
 ### Swift Package Manager
 
-Add SwiftUnixSockAPI to your Swift package dependencies:
+Add SwiftJanus to your Swift package dependencies:
 
 ```swift
 dependencies: [
-    .package(path: "../SwiftUnixSockAPI")
+    .package(path: "../SwiftJanus")
 ]
 ```
 
@@ -50,10 +50,10 @@ dependencies: [
 ### Basic Setup with Security Configuration
 
 ```swift
-import SwiftUnixSockAPI
+import SwiftJanus
 
 // Configure security and resource limits
-let config = UnixSockAPIClientConfig(
+let config = JanusClientConfig(
     maxConcurrentConnections: 50,
     maxMessageSize: 5 * 1024 * 1024, // 5MB
     connectionTimeout: 15.0,
@@ -66,7 +66,7 @@ let config = UnixSockAPIClientConfig(
 )
 
 // Initialize with security configuration
-let client = try UnixSockAPIClient(
+let client = try JanusClient(
     socketPath: "/tmp/my-api.sock", // Automatically validated for security
     channelId: "secure-channel",
     apiSpec: apiSpecDocument,
@@ -82,7 +82,7 @@ try client.registerCommandHandler("processData") { command, args in
     // All input is pre-validated and sanitized
     // Handlers automatically get timeout protection
     guard let input = args?["input"]?.value as? String else {
-        throw UnixSockAPIError.invalidArgument("input", "Required string parameter")
+        throw JanusError.invalidArgument("input", "Required string parameter")
     }
     
     let result = await processSecurely(input)
@@ -109,11 +109,11 @@ do {
     
     print("✅ Command completed: \(response.commandId)")
     
-} catch UnixSockAPIError.resourceLimit(let reason) {
+} catch JanusError.resourceLimit(let reason) {
     print("🚫 Resource limit: \(reason)")
-} catch UnixSockAPIError.securityViolation(let reason) {
+} catch JanusError.securityViolation(let reason) {
     print("🔒 Security violation: \(reason)")
-} catch UnixSockAPIError.commandTimeout(let id, let timeout) {
+} catch JanusError.commandTimeout(let id, let timeout) {
     print("⏰ Command \(id) timed out after \(timeout)s")
 }
 
@@ -240,7 +240,7 @@ Executed 129 tests, with 0 failures (0 unexpected) in 1.048 seconds
 
 ### Core Components
 
-#### UnixSockAPIClient
+#### JanusClient
 
 The main client interface providing:
 
@@ -249,7 +249,7 @@ The main client interface providing:
 - **Command Lifecycle**: Registration, validation, execution, and cleanup
 - **Error Handling**: Comprehensive error taxonomy with security context
 
-#### UnixSocketClient
+#### JanusClient
 
 Low-level socket communication layer:
 
@@ -308,7 +308,7 @@ Optimized for enterprise production use:
 
 ```swift
 // High-security configuration for financial systems
-let financialConfig = UnixSockAPIClientConfig(
+let financialConfig = JanusClientConfig(
     maxConcurrentConnections: 10,
     maxMessageSize: 1024 * 1024, // 1MB
     connectionTimeout: 5.0,
@@ -321,7 +321,7 @@ let financialConfig = UnixSockAPIClientConfig(
 )
 
 // High-throughput configuration for data processing
-let dataPipelineConfig = UnixSockAPIClientConfig(
+let dataPipelineConfig = JanusClientConfig(
     maxConcurrentConnections: 200,
     maxMessageSize: 50 * 1024 * 1024, // 50MB
     connectionTimeout: 60.0,
@@ -342,15 +342,15 @@ func handleCommand() async {
     do {
         let response = try await client.sendCommand("processData", args: data)
         // Handle success
-    } catch UnixSockAPIError.securityViolation(let reason) {
+    } catch JanusError.securityViolation(let reason) {
         // Log security incident and alert
         logger.critical("Security violation: \(reason)")
         alertSecurityTeam(reason)
-    } catch UnixSockAPIError.resourceLimit(let reason) {
+    } catch JanusError.resourceLimit(let reason) {
         // Implement backoff strategy
         logger.warning("Resource limit: \(reason)")
         await backoffAndRetry()
-    } catch UnixSockAPIError.connectionFailed(let reason) {
+    } catch JanusError.connectionFailed(let reason) {
         // Attempt service discovery and reconnection
         logger.error("Connection failed: \(reason)")
         await attemptReconnection()
@@ -384,7 +384,7 @@ try FileManager.default.setAttributes([.posixPermissions: 0o750], ofItemAtPath: 
 
 // Use secure socket path
 let socketPath = "\(socketDir)/api.sock"
-let client = try UnixSockAPIClient(
+let client = try JanusClient(
     socketPath: socketPath,
     channelId: "secure-api",
     apiSpec: apiSpec,
@@ -415,4 +415,4 @@ For enterprise support, security questions, or commercial licensing:
 
 ---
 
-**SwiftUnixSockAPI** - Enterprise-grade security and reliability for Unix socket communication.
+**SwiftJanus** - Enterprise-grade security and reliability for Unix socket communication.

@@ -2,7 +2,7 @@
 // Tests for edge cases and error conditions
 
 import XCTest
-@testable import SwiftUnixSockAPI
+@testable import SwiftJanus
 
 @MainActor
 final class EdgeCasesTests: XCTestCase {
@@ -10,7 +10,7 @@ final class EdgeCasesTests: XCTestCase {
     var testSocketPath: String!
     
     override func setUpWithError() throws {
-        testSocketPath = "/tmp/unixsockapi-edge-test.sock"
+        testSocketPath = "/tmp/janus-edge-test.sock"
         
         // Clean up any existing test socket files
         try? FileManager.default.removeItem(atPath: testSocketPath)
@@ -203,7 +203,7 @@ final class EdgeCasesTests: XCTestCase {
         // Should validate successfully
         try APISpecificationParser.validate(apiSpec)
         
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: apiSpec
@@ -213,9 +213,9 @@ final class EdgeCasesTests: XCTestCase {
         do {
             _ = try await client.sendCommand("noArgsCommand")
             XCTFail("Command should have failed due to no server running")
-        } catch UnixSockApiError.connectionError, UnixSockApiError.connectionRequired {
+        } catch JanusError.connectionError, JanusError.connectionRequired {
             // Expected - no server running
-        } catch UnixSockApiError.connectionTestFailed {
+        } catch JanusError.connectionTestFailed {
             // Expected in SOCK_DGRAM - connection fails before validation can occur
         } catch {
             XCTFail("Command with no args should validate correctly but fail on connection: \(error)")
@@ -282,7 +282,7 @@ final class EdgeCasesTests: XCTestCase {
         // Should validate successfully
         try APISpecificationParser.validate(apiSpec)
         
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "channel-with-dashes",
             apiSpec: apiSpec
@@ -296,7 +296,7 @@ final class EdgeCasesTests: XCTestCase {
         
         // Create multiple clients concurrently
         let clients = try (0..<10).map { i in
-            try UnixSockAPIDatagramClient(
+            try JanusDatagramClient(
                 socketPath: "\(testSocketPath!)-\(i)",
                 channelId: "testChannel",
                 apiSpec: apiSpec
@@ -315,7 +315,7 @@ final class EdgeCasesTests: XCTestCase {
         let longPath = "/tmp/" + String(repeating: "a", count: 100) + ".sock"
         
         do {
-            let client = try UnixSockAPIDatagramClient(
+            let client = try JanusDatagramClient(
                 socketPath: longPath,
                 channelId: "testChannel",
                 apiSpec: apiSpec
@@ -330,7 +330,7 @@ final class EdgeCasesTests: XCTestCase {
         let specialPath = "/tmp/socket-with-special-chars_123.sock"
         
         do {
-            let client = try UnixSockAPIDatagramClient(
+            let client = try JanusDatagramClient(
                 socketPath: specialPath,
                 channelId: "testChannel",
                 apiSpec: apiSpec

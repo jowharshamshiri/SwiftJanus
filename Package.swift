@@ -2,17 +2,17 @@
 import PackageDescription
 
 let package = Package(
-    name: "SwiftUnixSockAPI",
+    name: "SwiftJanus",
     platforms: [
         .macOS(.v12)
     ],
     products: [
         .library(
-            name: "SwiftUnixSockAPI",
-            targets: ["SwiftUnixSockAPI"]),
+            name: "SwiftJanus",
+            targets: ["SwiftJanus"]),
         .executable(
-            name: "SwiftUnixSockDgram",
-            targets: ["SwiftUnixSockDgram"]),
+            name: "SwiftJanusDgram",
+            targets: ["SwiftJanusDgram"]),
     ],
     dependencies: [
         .package(url: "https://github.com/jpsim/Yams.git", from: "5.0.0"),
@@ -20,19 +20,19 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "SwiftUnixSockAPI",
+            name: "SwiftJanus",
             dependencies: ["Yams"],
-            path: "Sources/SwiftUnixSockAPI"),
+            path: "Sources/SwiftJanus"),
         .executableTarget(
-            name: "SwiftUnixSockDgram",
+            name: "SwiftJanusDgram",
             dependencies: [
-                "SwiftUnixSockAPI",
+                "SwiftJanus",
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
-            path: "Sources/SwiftUnixSockDgram"),
+            path: "Sources/SwiftJanusDgram"),
         .testTarget(
-            name: "SwiftUnixSockAPITests",
-            dependencies: ["SwiftUnixSockAPI"],
-            path: "Tests/SwiftUnixSockAPITests"),
+            name: "SwiftJanusTests",
+            dependencies: ["SwiftJanus"],
+            path: "Tests/SwiftJanusTests"),
     ]
 )

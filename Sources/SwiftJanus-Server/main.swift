@@ -1,5 +1,5 @@
 import Foundation
-import SwiftUnixSockAPI
+import SwiftJanus
 
 func main() async {
         // Immediate output to verify the binary starts

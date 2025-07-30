@@ -1,8 +1,8 @@
 import Foundation
-import SwiftUnixSockAPI
+import SwiftJanus
 
 @main
-struct SwiftUnixSockAPIClient {
+struct SwiftJanusClient {
     static func main() async throws {
         // Parse command line arguments
         let arguments = CommandLine.arguments
@@ -26,7 +26,7 @@ struct SwiftUnixSockAPIClient {
         let apiSpec = try parser.parseJSON(specData)
         
         // Create SOCK_DGRAM client
-        let client = UnixSockAPIDatagramClient(
+        let client = JanusDatagramClient(
             socketPath: socketPath,
             channelId: "test",
             apiSpec: apiSpec,

@@ -2,7 +2,7 @@
 // Network failure scenario tests
 
 import XCTest
-@testable import SwiftUnixSockAPI
+@testable import SwiftJanus
 
 @MainActor
 final class NetworkFailureTests: XCTestCase {
@@ -11,7 +11,7 @@ final class NetworkFailureTests: XCTestCase {
     var testAPISpec: APISpecification!
     
     override func setUpWithError() throws {
-        testSocketPath = "/tmp/unixsockapi-network-test.sock"
+        testSocketPath = "/tmp/janus-network-test.sock"
         
         // Clean up any existing test socket files
         try? FileManager.default.removeItem(atPath: testSocketPath)
@@ -48,7 +48,7 @@ final class NetworkFailureTests: XCTestCase {
     // MARK: - Connection Failure Tests
     
     func testConnectionToNonExistentSocket() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: "/tmp/definitely-does-not-exist-12345.sock",
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -57,11 +57,11 @@ final class NetworkFailureTests: XCTestCase {
         do {
             _ = try await client.sendCommand("testCommand", args: ["data": AnyCodable("test")])
             XCTFail("Connection to non-existent socket should fail")
-        } catch UnixSockApiError.connectionError {
+        } catch JanusError.connectionError {
             // Expected
-        } catch UnixSockApiError.connectionRequired {
+        } catch JanusError.connectionRequired {
             // Also acceptable
-        } catch UnixSockApiError.connectionTestFailed {
+        } catch JanusError.connectionTestFailed {
             // Expected in SOCK_DGRAM architecture
         } catch {
             XCTFail("Unexpected error type: \(error)")
@@ -78,7 +78,7 @@ final class NetworkFailureTests: XCTestCase {
         
         for invalidPath in invalidPaths {
             do {
-                let client = try UnixSockAPIDatagramClient(
+                let client = try JanusDatagramClient(
                     socketPath: invalidPath,
                     channelId: "testChannel",
                     apiSpec: testAPISpec
@@ -87,7 +87,7 @@ final class NetworkFailureTests: XCTestCase {
                 do {
                     _ = try await client.sendCommand("testCommand")
                     XCTFail("Connection to invalid path should fail: \(invalidPath)")
-                } catch UnixSockApiError.connectionError, UnixSockApiError.connectionRequired {
+                } catch JanusError.connectionError, JanusError.connectionRequired {
                     // Expected
                 } catch {
                     // Other socket errors are also acceptable
@@ -100,7 +100,7 @@ final class NetworkFailureTests: XCTestCase {
     
     func testConnectionTimeout() async throws {
         // Connection timeout is handled internally by the datagram client
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -111,13 +111,13 @@ final class NetworkFailureTests: XCTestCase {
         do {
             _ = try await client.sendCommand("testCommand")
             XCTFail("Connection should timeout")
-        } catch UnixSockApiError.connectionError(let message) {
+        } catch JanusError.connectionError(let message) {
             // Should timeout quickly or fail immediately in SOCK_DGRAM
             let elapsedTime = Date().timeIntervalSince(startTime)
             XCTAssertLessThan(elapsedTime, 1.0, "Connection should timeout quickly or fail immediately")
             XCTAssertTrue(message.contains("timeout") || message.contains("Network is down") || message.contains("No such file or directory"), 
                          "Error should indicate timeout, network failure, or socket not found")
-        } catch UnixSockApiError.connectionTestFailed {
+        } catch JanusError.connectionTestFailed {
             // Expected in SOCK_DGRAM architecture - connection test fails immediately
         } catch {
             XCTFail("Unexpected error type: \(error)")
@@ -125,7 +125,7 @@ final class NetworkFailureTests: XCTestCase {
     }
     
     func testRepeatedConnectionFailures() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -136,9 +136,9 @@ final class NetworkFailureTests: XCTestCase {
             do {
                 _ = try await client.sendCommand("testCommand", args: ["iteration": AnyCodable(i)])
                 XCTFail("Connection should fail on iteration \(i)")
-            } catch UnixSockApiError.connectionError, UnixSockApiError.connectionRequired {
+            } catch JanusError.connectionError, JanusError.connectionRequired {
                 // Expected - each attempt should fail cleanly
-            } catch UnixSockApiError.connectionTestFailed {
+            } catch JanusError.connectionTestFailed {
                 // Expected in SOCK_DGRAM architecture
             } catch {
                 XCTFail("Unexpected error on iteration \(i): \(error)")
@@ -158,7 +158,7 @@ final class NetworkFailureTests: XCTestCase {
         
         for restrictedPath in restrictedPaths {
             do {
-                let client = try UnixSockAPIDatagramClient(
+                let client = try JanusDatagramClient(
                     socketPath: restrictedPath,
                     channelId: "testChannel",
                     apiSpec: testAPISpec
@@ -167,7 +167,7 @@ final class NetworkFailureTests: XCTestCase {
                 do {
                     _ = try await client.sendCommand("testCommand")
                     // Might succeed if we actually have permission, that's okay
-                } catch UnixSockApiError.connectionError {
+                } catch JanusError.connectionError {
                     // Expected - permission denied or path doesn't exist
                 } catch {
                     // Other errors are also acceptable for permission issues
@@ -182,7 +182,7 @@ final class NetworkFailureTests: XCTestCase {
     
     func testFileDescriptorExhaustion() async throws {
         // Test behavior when system runs out of file descriptors
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -207,7 +207,7 @@ final class NetworkFailureTests: XCTestCase {
     }
     
     func testMemoryPressureHandling() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -240,7 +240,7 @@ final class NetworkFailureTests: XCTestCase {
     func testSlowNetworkConditions() async throws {
         // Simulate slow network by using very short timeouts
         // SOCK_DGRAM timeout handling is built into the client
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -251,10 +251,10 @@ final class NetworkFailureTests: XCTestCase {
         do {
             _ = try await client.sendCommand("testCommand")
             XCTFail("Should timeout in slow network conditions")
-        } catch UnixSockApiError.connectionError {
+        } catch JanusError.connectionError {
             let elapsedTime = Date().timeIntervalSince(startTime)
             XCTAssertLessThan(elapsedTime, 0.5, "Should timeout quickly in slow conditions")
-        } catch UnixSockApiError.connectionTestFailed {
+        } catch JanusError.connectionTestFailed {
             // Expected in SOCK_DGRAM architecture
         } catch {
             XCTFail("Unexpected error in slow network test: \(error)")
@@ -262,7 +262,7 @@ final class NetworkFailureTests: XCTestCase {
     }
     
     func testNetworkInterruption() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -293,13 +293,13 @@ final class NetworkFailureTests: XCTestCase {
         // This test verifies behavior when trying to use the same socket path
         // from multiple clients (though our library is client-side only)
         
-        let client1 = try UnixSockAPIDatagramClient(
+        let client1 = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
         )
         
-        let client2 = try UnixSockAPIDatagramClient(
+        let client2 = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -312,7 +312,7 @@ final class NetworkFailureTests: XCTestCase {
     }
     
     func testSocketPathChanges() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -347,7 +347,7 @@ final class NetworkFailureTests: XCTestCase {
     // MARK: - Error Recovery Tests
     
     func testErrorRecoverySequence() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -376,7 +376,7 @@ final class NetworkFailureTests: XCTestCase {
     }
     
     func testConcurrentFailureHandling() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -413,7 +413,7 @@ final class NetworkFailureTests: XCTestCase {
         let longPath = "/tmp/" + String(repeating: "a", count: 200) + ".sock"
         
         do {
-            let client = try UnixSockAPIDatagramClient(
+            let client = try JanusDatagramClient(
                 socketPath: longPath,
                 channelId: "testChannel",
                 apiSpec: testAPISpec
@@ -429,7 +429,7 @@ final class NetworkFailureTests: XCTestCase {
             }
         } catch {
             // Client creation might fail due to path validation, which is fine
-            XCTAssertTrue(error is UnixSockApiError, "Should be a validation error")
+            XCTAssertTrue(error is JanusError, "Should be a validation error")
         }
     }
     
@@ -444,7 +444,7 @@ final class NetworkFailureTests: XCTestCase {
         
         for specialPath in specialPaths {
             do {
-                let client = try UnixSockAPIDatagramClient(
+                let client = try JanusDatagramClient(
                     socketPath: specialPath,
                     channelId: "testChannel",
                     apiSpec: testAPISpec
@@ -463,7 +463,7 @@ final class NetworkFailureTests: XCTestCase {
     }
     
     func testRapidConnectionCycling() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -489,7 +489,7 @@ final class NetworkFailureTests: XCTestCase {
     func testSystemLimitHandling() async throws {
         // Test behavior when approaching system limits
         let manyClients = (0..<100).map { i in
-            try? UnixSockAPIDatagramClient(
+            try? JanusDatagramClient(
                 socketPath: "\(testSocketPath!)-\(i)",
                 channelId: "testChannel",
                 apiSpec: testAPISpec
@@ -516,7 +516,7 @@ final class NetworkFailureTests: XCTestCase {
     }
     
     func testGracefulDegradation() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec

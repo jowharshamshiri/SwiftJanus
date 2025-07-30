@@ -1,6 +1,6 @@
 import Foundation
 import ArgumentParser
-import SwiftUnixSockAPI
+import SwiftJanus
 
 struct StandardError: TextOutputStream {
     func write(_ string: String) {
@@ -11,13 +11,13 @@ struct StandardError: TextOutputStream {
 var standardError = StandardError()
 
 @main
-struct UnixSockDgram: AsyncParsableCommand {
+struct JanusDgram: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Unified SOCK_DGRAM Unix Socket Process"
     )
     
     @Option(name: .long, help: "Unix socket path")
-    var socket: String = "/tmp/swift-unixsock.sock"
+    var socket: String = "/tmp/swift-janus.sock"
     
     @Flag(name: .long, help: "Listen for datagrams on socket")
     var listen: Bool = false
@@ -44,7 +44,7 @@ struct UnixSockDgram: AsyncParsableCommand {
             try await sendDatagram(to: target)
         } else {
             print("Usage: either --listen or --send-to required")
-            UnixSockDgram.exit(withError: ExitCode.validationFailure)
+            JanusDgram.exit(withError: ExitCode.validationFailure)
         }
     }
     
@@ -57,7 +57,7 @@ struct UnixSockDgram: AsyncParsableCommand {
         // Create SOCK_DGRAM socket
         let socketFD = Darwin.socket(AF_UNIX, SOCK_DGRAM, 0)
         guard socketFD != -1 else {
-            throw UnixSockApiError.socketCreationFailed("Failed to create socket")
+            throw JanusError.socketCreationFailed("Failed to create socket")
         }
         
         var addr = sockaddr_un()
@@ -79,7 +79,7 @@ struct UnixSockDgram: AsyncParsableCommand {
         
         guard bindResult == 0 else {
             Darwin.close(socketFD)
-            throw UnixSockApiError.bindFailed("Failed to bind socket")
+            throw JanusError.bindFailed("Failed to bind socket")
         }
         
         defer {
@@ -152,10 +152,10 @@ struct UnixSockDgram: AsyncParsableCommand {
             let response = try JSONDecoder().decode(SocketResponse.self, from: responseData)
             print("Response: Success=\(response.success), Result=\(response.result ?? [:])")
             
-        } catch UnixSockApiError.connectionTestFailed(let message) {
+        } catch JanusError.connectionTestFailed(let message) {
             print("Connection failed: \(message)", to: &standardError)
             throw ExitCode.failure
-        } catch UnixSockApiError.timeout(let message) {
+        } catch JanusError.timeout(let message) {
             print("Timeout: \(message)", to: &standardError)
             throw ExitCode.failure
         } catch {

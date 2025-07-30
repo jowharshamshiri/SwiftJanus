@@ -2,7 +2,7 @@
 // Comprehensive security and attack prevention tests
 
 import XCTest
-@testable import SwiftUnixSockAPI
+@testable import SwiftJanus
 
 @MainActor
 final class SecurityTests: XCTestCase {
@@ -11,7 +11,7 @@ final class SecurityTests: XCTestCase {
     var testAPISpec: APISpecification!
     
     override func setUpWithError() throws {
-        testSocketPath = "/tmp/unixsockapi-security-test.sock"
+        testSocketPath = "/tmp/janus-security-test.sock"
         
         // Clean up any existing test socket files
         try? FileManager.default.removeItem(atPath: testSocketPath)
@@ -63,15 +63,15 @@ final class SecurityTests: XCTestCase {
         
         for maliciousPath in maliciousPaths {
             XCTAssertThrowsError(
-                try UnixSockAPIDatagramClient(
+                try JanusDatagramClient(
                     socketPath: maliciousPath,
                     channelId: "testChannel",
                     apiSpec: testAPISpec
                 ),
                 "Path traversal attack should be blocked: \(maliciousPath)"
             ) { error in
-                XCTAssertTrue(error is UnixSockApiError)
-                if case .invalidSocketPath(let message) = error as? UnixSockApiError {
+                XCTAssertTrue(error is JanusError)
+                if case .invalidSocketPath(let message) = error as? JanusError {
                     XCTAssertTrue(message.contains("traversal") || message.contains("invalid"))
                 }
             }
@@ -86,7 +86,7 @@ final class SecurityTests: XCTestCase {
         
         for invalidPath in nullBytePaths {
             XCTAssertThrowsError(
-                try UnixSockAPIDatagramClient(
+                try JanusDatagramClient(
                     socketPath: invalidPath,
                     channelId: "testChannel",
                     apiSpec: testAPISpec
@@ -106,14 +106,14 @@ final class SecurityTests: XCTestCase {
         // This might throw due to system limits rather than our validation
         // The important thing is that it doesn't crash or cause undefined behavior
         do {
-            _ = try UnixSockAPIDatagramClient(
+            _ = try JanusDatagramClient(
                 socketPath: longPath,
                 channelId: "testChannel",
                 apiSpec: testAPISpec
             )
         } catch {
             // Expected to fail due to system limitations
-            XCTAssertTrue(error is UnixSockApiError)
+            XCTAssertTrue(error is JanusError)
         }
     }
     
@@ -135,20 +135,20 @@ final class SecurityTests: XCTestCase {
         
         for maliciousId in maliciousChannelIds {
             XCTAssertThrowsError(
-                try UnixSockAPIDatagramClient(
+                try JanusDatagramClient(
                     socketPath: testSocketPath,
                     channelId: maliciousId,
                     apiSpec: testAPISpec
                 ),
                 "Malicious channel ID should be rejected: \(maliciousId.debugDescription)"
             ) { error in
-                XCTAssertTrue(error is UnixSockApiError, "Expected UnixSockApiError but got \(error)")
+                XCTAssertTrue(error is JanusError, "Expected JanusError but got \(error)")
             }
         }
     }
     
     func testCommandInjectionInArguments() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -173,9 +173,9 @@ final class SecurityTests: XCTestCase {
                     args: ["data": AnyCodable(maliciousArg)]
                 )
                 // If no connection error, the validation should still work
-            } catch UnixSockApiError.connectionError, UnixSockApiError.connectionRequired {
+            } catch JanusError.connectionError, JanusError.connectionRequired {
                 // Expected - no server running, but validation passed
-            } catch let error as UnixSockApiError {
+            } catch let error as JanusError {
                 // Should not get validation errors for string content
                 // (unless it exceeds length limits)
                 if case .invalidArgument = error {
@@ -191,7 +191,7 @@ final class SecurityTests: XCTestCase {
     // MARK: - JSON/Protocol Attack Tests
     
     func testMalformedJSONAttacks() throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel", 
             apiSpec: testAPISpec
@@ -230,7 +230,7 @@ final class SecurityTests: XCTestCase {
     }
     
     func testUnicodeNormalizationAttacks() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -253,7 +253,7 @@ final class SecurityTests: XCTestCase {
                     "testCommand",
                     args: ["data": AnyCodable(unicodeAttack)]
                 )
-            } catch UnixSockApiError.connectionError, UnixSockApiError.connectionRequired {
+            } catch JanusError.connectionError, JanusError.connectionRequired {
                 // Expected - no server running
             } catch {
                 // Unicode content should be handled gracefully
@@ -265,7 +265,7 @@ final class SecurityTests: XCTestCase {
     // MARK: - Memory Exhaustion Attack Tests
     
     func testLargePayloadAttacks() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -287,14 +287,14 @@ final class SecurityTests: XCTestCase {
                     "testCommand",
                     args: ["data": AnyCodable(largeData)]
                 )
-            } catch UnixSockApiError.connectionError, UnixSockApiError.connectionRequired {
+            } catch JanusError.connectionError, JanusError.connectionRequired {
                 // Expected - no server running
-            } catch let error as UnixSockApiError {
+            } catch let error as JanusError {
                 if case .invalidArgument(let arg, let reason) = error {
                     XCTAssertTrue(reason.contains("size") || reason.contains("large"),
                                 "Large payload should be rejected with size error: \(reason)")
                 }
-            } catch UnixSockApiError.messageTooLarge {
+            } catch JanusError.messageTooLarge {
                 // This is also acceptable - message size limit reached
             } catch {
                 XCTFail("Unexpected error for large payload (size: \(size)): \(error)")
@@ -303,7 +303,7 @@ final class SecurityTests: XCTestCase {
     }
     
     func testRepeatedLargePayloadAttacks() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -318,7 +318,7 @@ final class SecurityTests: XCTestCase {
                     "testCommand",
                     args: ["data": AnyCodable(mediumData), "index": AnyCodable(i)]
                 )
-            } catch UnixSockApiError.connectionError, UnixSockApiError.connectionRequired {
+            } catch JanusError.connectionError, JanusError.connectionRequired {
                 // Expected - no server running
             } catch {
                 // Should handle repeated requests gracefully
@@ -330,7 +330,7 @@ final class SecurityTests: XCTestCase {
     
     func testConnectionPoolExhaustion() async throws {
         // SOCK_DGRAM doesn't use connection pools - each operation is independent
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel", 
             apiSpec: testAPISpec
@@ -356,7 +356,7 @@ final class SecurityTests: XCTestCase {
     }
     
     func testRapidConnectionAttempts() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -384,7 +384,7 @@ final class SecurityTests: XCTestCase {
     func testInsecureConfigurationPrevention() throws {
         // Test that the library can be configured with reasonable defaults
         // SOCK_DGRAM uses internal default configuration
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -399,7 +399,7 @@ final class SecurityTests: XCTestCase {
         // Test extreme but potentially valid configuration values
         // SOCK_DGRAM handles extreme values internally with built-in limits
         do {
-            _ = try UnixSockAPIDatagramClient(
+            _ = try JanusDatagramClient(
                 socketPath: testSocketPath,
                 channelId: "testChannel",
                 apiSpec: testAPISpec
@@ -414,7 +414,7 @@ final class SecurityTests: XCTestCase {
     
     func testValidationBypassAttempts() throws {
         // Test attempts to bypass argument validation
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec

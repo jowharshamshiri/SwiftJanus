@@ -3,7 +3,7 @@
 
 import XCTest
 import os.lock
-@testable import SwiftUnixSockAPI
+@testable import SwiftJanus
 
 @MainActor
 final class ConcurrencyTests: XCTestCase {
@@ -12,7 +12,7 @@ final class ConcurrencyTests: XCTestCase {
     var testAPISpec: APISpecification!
     
     override func setUpWithError() throws {
-        testSocketPath = "/tmp/unixsockapi-concurrency-test.sock"
+        testSocketPath = "/tmp/janus-concurrency-test.sock"
         
         // Clean up any existing test socket files
         try? FileManager.default.removeItem(atPath: testSocketPath)
@@ -49,7 +49,7 @@ final class ConcurrencyTests: XCTestCase {
     // MARK: - High Concurrency Tests
     
     func testHighConcurrencyCommandExecution() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -82,21 +82,21 @@ final class ConcurrencyTests: XCTestCase {
     
     func testConcurrentClientCreation() async throws {
         let clientCount = 50
-        var clients: [UnixSockAPIDatagramClient] = []
+        var clients: [JanusDatagramClient] = []
         var creationErrors = 0
         
-        await withTaskGroup(of: UnixSockAPIDatagramClient?.self) { group in
+        await withTaskGroup(of: JanusDatagramClient?.self) { group in
             for i in 0..<clientCount {
                 group.addTask { @MainActor in
                     do {
-                        return try UnixSockAPIDatagramClient(
+                        return try JanusDatagramClient(
                             socketPath: "\(self.testSocketPath!)-\(i)",
                             channelId: "testChannel",
                             apiSpec: self.testAPISpec
                         )
                     } catch {
                         creationErrors += 1
-                        return nil as UnixSockAPIDatagramClient?
+                        return nil as JanusDatagramClient?
                     }
                 }
             }
@@ -114,7 +114,7 @@ final class ConcurrencyTests: XCTestCase {
     }
     
     func testConcurrentHandlerRegistration() throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -133,7 +133,7 @@ final class ConcurrencyTests: XCTestCase {
     
     func testConcurrentConnectionPoolUsage() async throws {
         // SOCK_DGRAM doesn't use connection pools - operations are stateless
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -165,7 +165,7 @@ final class ConcurrencyTests: XCTestCase {
     // MARK: - Race Condition Tests
     
     func testConcurrentStateModification() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -200,7 +200,7 @@ final class ConcurrencyTests: XCTestCase {
     }
     
     func testConcurrentConnectionManagement() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -227,7 +227,7 @@ final class ConcurrencyTests: XCTestCase {
     // MARK: - Thread Safety Tests
     
     func testThreadSafetyOfConfiguration() throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -260,7 +260,7 @@ final class ConcurrencyTests: XCTestCase {
     }
     
     func testThreadSafetyOfAPISpecAccess() throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -283,7 +283,7 @@ final class ConcurrencyTests: XCTestCase {
     // MARK: - Deadlock Prevention Tests
     
     func testNoDeadlockUnderLoad() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -315,7 +315,7 @@ final class ConcurrencyTests: XCTestCase {
     }
     
     func testNoDeadlockWithMixedOperations() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -365,7 +365,7 @@ final class ConcurrencyTests: XCTestCase {
     // MARK: - Memory Safety Under Concurrency
     
     func testMemorySafetyUnderConcurrentAccess() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -400,7 +400,7 @@ final class ConcurrencyTests: XCTestCase {
             for i in 0..<20 {
                 group.addTask { @MainActor in
                     do {
-                        let client = try UnixSockAPIDatagramClient(
+                        let client = try JanusDatagramClient(
                             socketPath: "\(self.testSocketPath!)-cleanup-\(i)",
                             channelId: "testChannel",
                             apiSpec: self.testAPISpec
@@ -427,7 +427,7 @@ final class ConcurrencyTests: XCTestCase {
     
     func testConnectionPoolThreadSafety() async throws {
         // SOCK_DGRAM doesn't use connection pools - each operation is stateless
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -455,7 +455,7 @@ final class ConcurrencyTests: XCTestCase {
     // MARK: - Stress Tests
     
     func testHighVolumeRequestStress() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -500,7 +500,7 @@ final class ConcurrencyTests: XCTestCase {
             for clientId in 0..<clientCount {
                 group.addTask { @MainActor in
                     do {
-                        let client = try UnixSockAPIDatagramClient(
+                        let client = try JanusDatagramClient(
                             socketPath: "\(self.testSocketPath!)-stress-\(clientId)",
                             channelId: "testChannel",
                             apiSpec: self.testAPISpec

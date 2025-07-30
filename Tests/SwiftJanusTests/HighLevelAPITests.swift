@@ -1,6 +1,6 @@
 import XCTest
 import Foundation
-@testable import SwiftUnixSockAPI
+@testable import SwiftJanus
 
 @available(macOS 10.14, iOS 12.0, *)
 final class HighLevelAPITests: XCTestCase {
@@ -9,7 +9,7 @@ final class HighLevelAPITests: XCTestCase {
     var testAPISpec: APISpecification!
     
     override func setUpWithError() throws {
-        testSocketPath = "/tmp/unixsockapi-highlevel-test.sock"
+        testSocketPath = "/tmp/janus-highlevel-test.sock"
         
         // Clean up any existing test socket files
         try? FileManager.default.removeItem(atPath: testSocketPath)
@@ -24,7 +24,7 @@ final class HighLevelAPITests: XCTestCase {
     }
     
     func testDatagramClientCreation() throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -33,7 +33,7 @@ final class HighLevelAPITests: XCTestCase {
     }
     
     func testDatagramCommandValidation() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -42,9 +42,9 @@ final class HighLevelAPITests: XCTestCase {
         // Valid command should pass validation
         do {
             _ = try await client.sendCommand("ping", args: ["message": AnyCodable("test")])
-        } catch UnixSockApiError.connectionError, UnixSockApiError.connectionRequired {
+        } catch JanusError.connectionError, JanusError.connectionRequired {
             // Expected - no server running
-        } catch UnixSockApiError.connectionTestFailed {
+        } catch JanusError.connectionTestFailed {
             // Expected in SOCK_DGRAM - connection test fails
         } catch {
             XCTFail("Valid command should pass validation: \(error)")
@@ -52,7 +52,7 @@ final class HighLevelAPITests: XCTestCase {
     }
     
     func testDatagramInvalidCommand() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -62,7 +62,7 @@ final class HighLevelAPITests: XCTestCase {
         do {
             _ = try await client.sendCommand("nonExistentCommand")
             XCTFail("Expected unknown command error")
-        } catch let error as UnixSockApiError {
+        } catch let error as JanusError {
             if case .unknownCommand = error {
                 // Expected
             } else if case .connectionTestFailed(_) = error {
@@ -74,7 +74,7 @@ final class HighLevelAPITests: XCTestCase {
     }
     
     func testDatagramArgumentValidation() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -84,7 +84,7 @@ final class HighLevelAPITests: XCTestCase {
         do {
             _ = try await client.sendCommand("echo") // Missing required 'data' arg
             XCTFail("Expected missing required argument error")
-        } catch let error as UnixSockApiError {
+        } catch let error as JanusError {
             if case .missingRequiredArgument(let argName) = error {
                 XCTAssertEqual(argName, "data")
             } else if case .connectionTestFailed(_) = error {

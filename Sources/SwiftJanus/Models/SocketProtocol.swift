@@ -99,7 +99,7 @@ public enum MessageType: String, Codable, Sendable {
 }
 
 /// Unified error enum for SOCK_DGRAM communication
-public enum UnixSockApiError: Error, LocalizedError {
+public enum JanusError: Error, LocalizedError {
     case invalidChannel(String)
     case unknownCommand(String)
     case missingRequiredArgument(String)

@@ -1,20 +1,20 @@
-// UnixSockAPITests.swift
-// Basic tests for UnixSockAPI functionality
+// JanusTests.swift
+// Basic tests for Janus functionality
 
 import XCTest
-@testable import SwiftUnixSockAPI
+@testable import SwiftJanus
 
-final class UnixSockAPITests: XCTestCase {
+final class JanusTests: XCTestCase {
     
     override func setUpWithError() throws {
         // Clean up any existing test socket files
-        let testSocketPath = "/tmp/unixsockapi-test.sock"
+        let testSocketPath = "/tmp/janus-test.sock"
         try? FileManager.default.removeItem(atPath: testSocketPath)
     }
     
     override func tearDownWithError() throws {
         // Clean up test socket files
-        let testSocketPath = "/tmp/unixsockapi-test.sock"
+        let testSocketPath = "/tmp/janus-test.sock"
         try? FileManager.default.removeItem(atPath: testSocketPath)
     }
     
@@ -167,9 +167,9 @@ final class UnixSockAPITests: XCTestCase {
         XCTAssertEqual(array?.count, 3)
     }
     
-    func testUnixSocketClientInitialization() {
+    func testJanusClientInitialization() {
         let socketPath = "/tmp/test-socket.sock"
-        let client = try? UnixSockAPIDatagramClient(
+        let client = try? JanusDatagramClient(
             socketPath: socketPath,
             channelId: "test",
             apiSpec: nil

@@ -17,13 +17,13 @@ public class UnixDatagramClient {
     public func sendDatagram(_ data: Data, responseSocketPath: String) async throws -> Data {
         // Validate message size
         guard data.count <= maxMessageSize else {
-            throw UnixSockApiError.messageTooLarge(data.count, maxMessageSize)
+            throw JanusError.messageTooLarge(data.count, maxMessageSize)
         }
         
         // Create response socket for receiving replies
         let responseSocketFD = socket(AF_UNIX, SOCK_DGRAM, 0)
         guard responseSocketFD != -1 else {
-            throw UnixSockApiError.socketCreationFailed("Failed to create response socket")
+            throw JanusError.socketCreationFailed("Failed to create response socket")
         }
         
         defer { close(responseSocketFD) }
@@ -48,7 +48,7 @@ public class UnixDatagramClient {
         }
         
         guard bindResult == 0 else {
-            throw UnixSockApiError.bindFailed("Failed to bind response socket")
+            throw JanusError.bindFailed("Failed to bind response socket")
         }
         
         // Clean up response socket file on completion
@@ -59,7 +59,7 @@ public class UnixDatagramClient {
         // Create client socket for sending
         let clientSocketFD = socket(AF_UNIX, SOCK_DGRAM, 0)
         guard clientSocketFD != -1 else {
-            throw UnixSockApiError.socketCreationFailed("Failed to create client socket")
+            throw JanusError.socketCreationFailed("Failed to create client socket")
         }
         
         defer { close(clientSocketFD) }
@@ -88,9 +88,9 @@ public class UnixDatagramClient {
         guard sendResult != -1 else {
             let errorCode = errno
             if errorCode == ENOENT || errorCode == ECONNREFUSED {
-                throw UnixSockApiError.connectionError("No such file or directory (target socket does not exist)")
+                throw JanusError.connectionError("No such file or directory (target socket does not exist)")
             } else {
-                throw UnixSockApiError.sendFailed("Failed to send datagram: errno \(errorCode)")
+                throw JanusError.sendFailed("Failed to send datagram: errno \(errorCode)")
             }
         }
         
@@ -104,13 +104,13 @@ public class UnixDatagramClient {
     public func sendDatagramNoResponse(_ data: Data) async throws {
         // Validate message size
         guard data.count <= maxMessageSize else {
-            throw UnixSockApiError.messageTooLarge(data.count, maxMessageSize)
+            throw JanusError.messageTooLarge(data.count, maxMessageSize)
         }
         
         // Create client socket for sending
         let clientSocketFD = socket(AF_UNIX, SOCK_DGRAM, 0)
         guard clientSocketFD != -1 else {
-            throw UnixSockApiError.socketCreationFailed("Failed to create client socket")
+            throw JanusError.socketCreationFailed("Failed to create client socket")
         }
         
         defer { close(clientSocketFD) }
@@ -139,9 +139,9 @@ public class UnixDatagramClient {
         guard sendResult != -1 else {
             let errorCode = errno
             if errorCode == ENOENT || errorCode == ECONNREFUSED {
-                throw UnixSockApiError.connectionError("No such file or directory (target socket does not exist)")
+                throw JanusError.connectionError("No such file or directory (target socket does not exist)")
             } else {
-                throw UnixSockApiError.sendFailed("Failed to send datagram: errno \(errorCode)")
+                throw JanusError.sendFailed("Failed to send datagram: errno \(errorCode)")
             }
         }
     }
@@ -153,7 +153,7 @@ public class UnixDatagramClient {
         // Create client socket for testing
         let clientSocketFD = socket(AF_UNIX, SOCK_DGRAM, 0)
         guard clientSocketFD != -1 else {
-            throw UnixSockApiError.socketCreationFailed("Failed to create test socket")
+            throw JanusError.socketCreationFailed("Failed to create test socket")
         }
         
         defer { close(clientSocketFD) }
@@ -180,7 +180,7 @@ public class UnixDatagramClient {
         }
         
         guard sendResult != -1 else {
-            throw UnixSockApiError.connectionTestFailed("Test datagram send failed")
+            throw JanusError.connectionTestFailed("Test datagram send failed")
         }
     }
     
@@ -200,9 +200,9 @@ public class UnixDatagramClient {
                 let receivedBytes = recv(socketFD, &buffer, self.maxMessageSize, 0)
                 
                 if receivedBytes == -1 {
-                    continuation.resume(throwing: UnixSockApiError.receiveFailed("Failed to receive response"))
+                    continuation.resume(throwing: JanusError.receiveFailed("Failed to receive response"))
                 } else if receivedBytes == 0 {
-                    continuation.resume(throwing: UnixSockApiError.connectionClosed("Socket closed"))
+                    continuation.resume(throwing: JanusError.connectionClosed("Socket closed"))
                 } else {
                     let data = Data(buffer.prefix(receivedBytes))
                     continuation.resume(returning: data)
@@ -219,11 +219,11 @@ public class UnixDatagramClient {
             
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                throw UnixSockApiError.timeout("Operation timed out after \\(timeout) seconds")
+                throw JanusError.timeout("Operation timed out after \\(timeout) seconds")
             }
             
             guard let result = try await group.next() else {
-                throw UnixSockApiError.timeout("Task group failed")
+                throw JanusError.timeout("Task group failed")
             }
             
             group.cancelAll()

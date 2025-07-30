@@ -1,4 +1,4 @@
-# UnixSockAPI - Implementation Summary
+# Janus - Implementation Summary
 
 ## Project Completion Status: ✅ COMPLETE
 
@@ -36,21 +36,21 @@ A comprehensive, stateless Unix socket-based API communication library for Swift
 
 ### Project Structure
 ```
-UnixSockAPI/
+Janus/
 ├── Package.swift                     # Swift package configuration
-├── Sources/UnixSockAPI/
-│   ├── UnixSockAPI.swift            # Main library entry point
+├── Sources/Janus/
+│   ├── Janus.swift            # Main library entry point
 │   ├── Core/
-│   │   ├── UnixSocketClient.swift   # Low-level socket communication
-│   │   ├── UnixSockAPIClient.swift  # High-level API client
+│   │   ├── JanusClient.swift   # Low-level socket communication
+│   │   ├── JanusClient.swift  # High-level API client
 │   │   └── APISpecificationParser.swift # JSON/YAML parser
 │   └── Models/
 │       ├── APISpecification.swift   # API spec data models
 │       └── SocketProtocol.swift     # Communication protocol models
-├── Tests/UnixSockAPITests/
-│   ├── UnixSockAPITests.swift      # Basic functionality tests
+├── Tests/JanusTests/
+│   ├── JanusTests.swift      # Basic functionality tests
 │   ├── APISpecificationParserTests.swift # Parser validation tests
-│   ├── UnixSockAPIClientTests.swift # Client functionality tests
+│   ├── JanusClientTests.swift # Client functionality tests
 │   ├── StatelessCommunicationTests.swift # Stateless behavior tests
 │   ├── TimeoutTests.swift          # Timeout handling tests
 │   └── EdgeCasesTests.swift        # Edge cases and error conditions
@@ -61,7 +61,7 @@ UnixSockAPI/
 
 ### Core Classes
 
-#### `UnixSockAPIClient`
+#### `JanusClient`
 - Main client class for API communication
 - Stateless design with temporary connections per command
 - UUID generation and tracking
@@ -74,7 +74,7 @@ UnixSockAPI/
 - Validation constraints and model references
 - JSON/YAML serialization support
 
-#### `UnixSocketClient`
+#### `JanusClient`
 - Low-level BSD socket communication
 - Message framing with length prefixes
 - Async/await based API
@@ -196,10 +196,10 @@ try client.registerCommandHandler("slowOperation") { command, args in
 ## Usage Example
 
 ```swift
-import UnixSockAPI
+import Janus
 
 // Initialize client with API specification
-let client = try UnixSockAPIClient(
+let client = try JanusClient(
     socketPath: "/tmp/my-api.sock",
     channelId: "data-processing",
     apiSpec: loadAPISpec()

@@ -2,7 +2,7 @@
 // Message framing and protocol tests
 
 import XCTest
-@testable import SwiftUnixSockAPI
+@testable import SwiftJanus
 
 @MainActor
 final class ProtocolTests: XCTestCase {
@@ -11,7 +11,7 @@ final class ProtocolTests: XCTestCase {
     var testAPISpec: APISpecification!
     
     override func setUpWithError() throws {
-        testSocketPath = "/tmp/unixsockapi-protocol-test.sock"
+        testSocketPath = "/tmp/janus-protocol-test.sock"
         
         // Clean up any existing test socket files
         try? FileManager.default.removeItem(atPath: testSocketPath)
@@ -48,7 +48,7 @@ final class ProtocolTests: XCTestCase {
     // MARK: - SOCK_DGRAM JSON Serialization Tests
     
     func testJSONSerializationValidation() throws {
-        // SOCK_DGRAM uses UnixSockAPIDatagramClient - test JSON parsing directly
+        // SOCK_DGRAM uses JanusDatagramClient - test JSON parsing directly
         
         // Test various JSON messages for SOCK_DGRAM communication
         let testMessages = [
@@ -99,7 +99,7 @@ final class ProtocolTests: XCTestCase {
     }
     
     func testMalformedJSONValidation() throws {
-        // SOCK_DGRAM uses UnixSockAPIDatagramClient - test JSON parsing directly
+        // SOCK_DGRAM uses JanusDatagramClient - test JSON parsing directly
         
         // Test various malformed messages that should fail JSON parsing
         let definitivelyInvalidMessages = [
@@ -352,7 +352,7 @@ final class ProtocolTests: XCTestCase {
         
         for spec in specs {
             // Should be able to create clients with different versions
-            let client = try UnixSockAPIDatagramClient(
+            let client = try JanusDatagramClient(
                 socketPath: testSocketPath,
                 channelId: "testChannel",
                 apiSpec: spec
@@ -391,12 +391,12 @@ final class ProtocolTests: XCTestCase {
     func testErrorPropagation() throws {
         // Test that errors are properly structured for transmission
         let testErrors = [
-            UnixSockApiError.invalidChannel("test channel"),
-            UnixSockApiError.unknownCommand("test command"),
-            UnixSockApiError.invalidArgument("test args", "reason"),
-            UnixSockApiError.commandTimeout("cmd-123", 30.0),
-            UnixSockApiError.resourceLimit("too many"),
-            UnixSockApiError.invalidSocketPath("bad path")
+            JanusError.invalidChannel("test channel"),
+            JanusError.unknownCommand("test command"),
+            JanusError.invalidArgument("test args", "reason"),
+            JanusError.commandTimeout("cmd-123", 30.0),
+            JanusError.resourceLimit("too many"),
+            JanusError.invalidSocketPath("bad path")
         ]
         
         for testError in testErrors {
@@ -445,7 +445,7 @@ final class ProtocolTests: XCTestCase {
         let binaryData = Data([0x00, 0x01, 0x02, 0xFF, 0xFE, 0xFD])
         
         // Create SOCK_DGRAM client
-        let socketClient = try UnixSockAPIDatagramClient(
+        let socketClient = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "test",
             apiSpec: nil

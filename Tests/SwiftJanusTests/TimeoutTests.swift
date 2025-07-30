@@ -2,7 +2,7 @@
 // Tests for command timeout functionality
 
 import XCTest
-@testable import SwiftUnixSockAPI
+@testable import SwiftJanus
 
 @MainActor
 final class TimeoutTests: XCTestCase {
@@ -11,7 +11,7 @@ final class TimeoutTests: XCTestCase {
     var testAPISpec: APISpecification!
     
     override func setUpWithError() throws {
-        testSocketPath = "/tmp/unixsockapi-timeout-test.sock"
+        testSocketPath = "/tmp/janus-timeout-test.sock"
         
         // Clean up any existing test socket files
         try? FileManager.default.removeItem(atPath: testSocketPath)
@@ -26,7 +26,7 @@ final class TimeoutTests: XCTestCase {
     }
     
     func testCommandWithTimeout() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "timeoutChannel",
             apiSpec: testAPISpec
@@ -42,7 +42,7 @@ final class TimeoutTests: XCTestCase {
                 timeout: 0.1 // Very short timeout
             )
             XCTFail("Expected timeout or connection error")
-        } catch let error as UnixSockApiError {
+        } catch let error as JanusError {
             // Connection fails immediately when no server is running
             // This is expected behavior and prevents testing actual timeout logic
             switch error {
@@ -52,7 +52,7 @@ final class TimeoutTests: XCTestCase {
             default:
                 XCTFail("Unexpected socket error: \(error)")
             }
-        } catch let error as UnixSockApiError {
+        } catch let error as JanusError {
             if case .commandTimeout(let commandId, let timeout) = error {
                 XCTAssertNotNil(commandId)
                 XCTAssertEqual(timeout, 0.1, accuracy: 0.01)
@@ -69,7 +69,7 @@ final class TimeoutTests: XCTestCase {
     }
     
     func testCommandTimeoutErrorMessage() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "timeoutChannel",
             apiSpec: testAPISpec
@@ -82,10 +82,10 @@ final class TimeoutTests: XCTestCase {
                 timeout: 0.05
             )
             XCTFail("Expected timeout or connection error")
-        } catch UnixSockApiError.connectionError, UnixSockApiError.connectionRequired {
+        } catch JanusError.connectionError, JanusError.connectionRequired {
             // Connection fails immediately when no server is running
             // This is expected behavior
-        } catch let error as UnixSockApiError {
+        } catch let error as JanusError {
             if case .commandTimeout(let commandId, _) = error {
                 let errorMessage = error.localizedDescription
                 XCTAssertTrue(errorMessage.contains(commandId))
@@ -100,7 +100,7 @@ final class TimeoutTests: XCTestCase {
     }
     
     func testUUIDGeneration() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "timeoutChannel",
             apiSpec: testAPISpec
@@ -115,9 +115,9 @@ final class TimeoutTests: XCTestCase {
             let uuid = UUID(uuidString: response.commandId)
             XCTAssertNotNil(uuid, "Command ID should be a valid UUID")
             
-        } catch UnixSockApiError.connectionError, UnixSockApiError.connectionRequired {
+        } catch JanusError.connectionError, JanusError.connectionRequired {
             // Expected since no server is running
-        } catch UnixSockApiError.connectionTestFailed {
+        } catch JanusError.connectionTestFailed {
             // Expected in SOCK_DGRAM - connection test fails
         } catch {
             XCTFail("Unexpected error: \(error)")
@@ -125,7 +125,7 @@ final class TimeoutTests: XCTestCase {
     }
     
     func testMultipleCommandsWithDifferentTimeouts() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "timeoutChannel",
             apiSpec: testAPISpec
@@ -197,7 +197,7 @@ final class TimeoutTests: XCTestCase {
     }
     
     func testDefaultTimeout() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "timeoutChannel",
             apiSpec: testAPISpec
@@ -207,12 +207,12 @@ final class TimeoutTests: XCTestCase {
         do {
             _ = try await client.sendCommand("quickCommand", args: ["data": AnyCodable("test")])
             XCTFail("Expected connection error")
-        } catch UnixSockApiError.connectionError, UnixSockApiError.connectionRequired {
+        } catch JanusError.connectionError, JanusError.connectionRequired {
             // Expected since no server is running
-        } catch UnixSockApiError.commandTimeout(_, let timeout) {
+        } catch JanusError.commandTimeout(_, let timeout) {
             // Should not timeout with default 30 second timeout in this fast test
             XCTFail("Unexpected timeout with \(timeout) seconds")
-        } catch UnixSockApiError.connectionTestFailed {
+        } catch JanusError.connectionTestFailed {
             // Expected in SOCK_DGRAM - connection test fails
         } catch {
             XCTFail("Unexpected error: \(error)")
@@ -220,7 +220,7 @@ final class TimeoutTests: XCTestCase {
     }
     
     func testConcurrentTimeouts() async throws {
-        let client = try UnixSockAPIDatagramClient(
+        let client = try JanusDatagramClient(
             socketPath: testSocketPath,
             channelId: "timeoutChannel",
             apiSpec: testAPISpec
@@ -258,8 +258,8 @@ final class TimeoutTests: XCTestCase {
     }
     
     func testHandlerTimeoutAPIError() {
-        // Test the handlerTimeout case in UnixSockApiError
-        let handlerTimeoutError = UnixSockApiError.handlerTimeout("handler-123", 10.0)
+        // Test the handlerTimeout case in JanusError
+        let handlerTimeoutError = JanusError.handlerTimeout("handler-123", 10.0)
         
         let errorMessage = handlerTimeoutError.localizedDescription
         XCTAssertTrue(errorMessage.contains("handler-123"))

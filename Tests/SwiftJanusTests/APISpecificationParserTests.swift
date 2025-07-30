@@ -2,7 +2,7 @@
 // Tests for API specification parsing and validation
 
 import XCTest
-@testable import SwiftUnixSockAPI
+@testable import SwiftJanus
 
 final class APISpecificationParserTests: XCTestCase {
     

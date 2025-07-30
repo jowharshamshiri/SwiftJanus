@@ -2,7 +2,7 @@ import Foundation
 
 /// High-level API client for SOCK_DGRAM Unix socket communication
 /// Connectionless implementation with command validation and response correlation
-public class UnixSockAPIDatagramClient {
+public class JanusDatagramClient {
     private let socketPath: String
     private let channelId: String
     private let apiSpec: APISpecification?
@@ -76,11 +76,11 @@ public class UnixSockAPIDatagramClient {
         
         // Validate response correlation
         guard response.commandId == commandId else {
-            throw UnixSockApiError.protocolError("Response correlation mismatch: expected \\(commandId), got \\(response.commandId)")
+            throw JanusError.protocolError("Response correlation mismatch: expected \\(commandId), got \\(response.commandId)")
         }
         
         guard response.channelId == channelId else {
-            throw UnixSockApiError.protocolError("Channel mismatch: expected \\(channelId), got \\(response.channelId)")
+            throw JanusError.protocolError("Channel mismatch: expected \\(channelId), got \\(response.channelId)")
         }
         
         return response
@@ -132,41 +132,41 @@ public class UnixSockAPIDatagramClient {
     ) throws {
         // Validate socket path
         guard !socketPath.isEmpty else {
-            throw UnixSockApiError.invalidSocketPath("Socket path cannot be empty")
+            throw JanusError.invalidSocketPath("Socket path cannot be empty")
         }
         
         // Security validation for socket path (matching Go implementation)
         if socketPath.contains("\0") {
-            throw UnixSockApiError.invalidSocketPath("Socket path contains invalid null byte")
+            throw JanusError.invalidSocketPath("Socket path contains invalid null byte")
         }
         
         if socketPath.contains("..") {
-            throw UnixSockApiError.invalidSocketPath("Socket path contains path traversal sequence")
+            throw JanusError.invalidSocketPath("Socket path contains path traversal sequence")
         }
         
         // Validate channel ID
         guard !channelId.isEmpty else {
-            throw UnixSockApiError.invalidChannel("Channel ID cannot be empty")
+            throw JanusError.invalidChannel("Channel ID cannot be empty")
         }
         
         // Security validation for channel ID (matching Go implementation)
         let forbiddenChars = CharacterSet(charactersIn: "\0;`$|&\n\r\t")
         if channelId.rangeOfCharacter(from: forbiddenChars) != nil {
-            throw UnixSockApiError.invalidChannel("Channel ID contains forbidden characters")
+            throw JanusError.invalidChannel("Channel ID contains forbidden characters")
         }
         
         if channelId.contains("..") || channelId.hasPrefix("/") {
-            throw UnixSockApiError.invalidChannel("Channel ID contains invalid path characters")
+            throw JanusError.invalidChannel("Channel ID contains invalid path characters")
         }
         
         // Validate API spec and channel exists if provided
         if let spec = apiSpec {
             guard !spec.channels.isEmpty else {
-                throw UnixSockApiError.validationError("API specification must contain at least one channel")
+                throw JanusError.validationError("API specification must contain at least one channel")
             }
             
             guard spec.channels.keys.contains(channelId) else {
-                throw UnixSockApiError.invalidChannel(channelId)
+                throw JanusError.invalidChannel(channelId)
             }
         }
     }
@@ -174,12 +174,12 @@ public class UnixSockAPIDatagramClient {
     private func validateCommandAgainstSpec(_ spec: APISpecification, command: SocketCommand) throws {
         // Check if channel exists
         guard let channel = spec.channels[command.channelId] else {
-            throw UnixSockApiError.validationError("Channel \(command.channelId) not found in API specification")
+            throw JanusError.validationError("Channel \(command.channelId) not found in API specification")
         }
         
         // Check if command exists in channel
         guard channel.commands.keys.contains(command.command) else {
-            throw UnixSockApiError.unknownCommand(command.command)
+            throw JanusError.unknownCommand(command.command)
         }
         
         // Validate command arguments
@@ -191,7 +191,7 @@ public class UnixSockAPIDatagramClient {
             // Check for required arguments
             for (argName, argSpec) in specArgs {
                 if argSpec.required && args[argName] == nil {
-                    throw UnixSockApiError.missingRequiredArgument(argName)
+                    throw JanusError.missingRequiredArgument(argName)
                 }
             }
         }

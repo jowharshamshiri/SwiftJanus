@@ -1,10 +1,10 @@
 import Foundation
 
 /// Command handler function type for SOCK_DGRAM server
-public typealias DatagramCommandHandler = (SocketCommand) -> Result<[String: AnyCodable], UnixSockApiError>
+public typealias DatagramCommandHandler = (SocketCommand) -> Result<[String: AnyCodable], JanusError>
 
 /// High-level SOCK_DGRAM Unix socket server
-/// Extracted from SwiftUnixSockDgram main binary and made reusable
+/// Extracted from SwiftJanusDgram main binary and made reusable
 public class UnixDatagramServer {
     private var handlers: [String: DatagramCommandHandler] = [:]
     private var isRunning = false
@@ -31,7 +31,7 @@ public class UnixDatagramServer {
         // Create SOCK_DGRAM socket
         let socketFD = Darwin.socket(AF_UNIX, SOCK_DGRAM, 0)
         guard socketFD != -1 else {
-            throw UnixSockApiError.socketCreationFailed("Failed to create socket")
+            throw JanusError.socketCreationFailed("Failed to create socket")
         }
         
         var addr = sockaddr_un()
@@ -53,7 +53,7 @@ public class UnixDatagramServer {
         
         guard bindResult == 0 else {
             Darwin.close(socketFD)
-            throw UnixSockApiError.bindFailed("Failed to bind socket")  
+            throw JanusError.bindFailed("Failed to bind socket")  
         }
         
         defer {
