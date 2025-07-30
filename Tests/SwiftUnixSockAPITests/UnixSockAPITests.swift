@@ -169,7 +169,11 @@ final class UnixSockAPITests: XCTestCase {
     
     func testUnixSocketClientInitialization() {
         let socketPath = "/tmp/test-socket.sock"
-        let client = UnixSocketClient(socketPath: socketPath)
+        let client = try? UnixSockAPIDatagramClient(
+            socketPath: socketPath,
+            channelId: "test",
+            apiSpec: nil
+        )
         
         // Test that client is created successfully
         XCTAssertNotNil(client)

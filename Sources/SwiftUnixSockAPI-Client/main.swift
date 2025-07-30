@@ -25,15 +25,15 @@ struct SwiftUnixSockAPIClient {
         let parser = APISpecificationParser()
         let apiSpec = try parser.parseJSON(specData)
         
-        // Create client configuration
-        let config = UnixSockAPIClientConfig.default
-        
-        // Create client
-        let client = try UnixSockAPIClient(
+        // Create SOCK_DGRAM client
+        let client = UnixSockAPIDatagramClient(
             socketPath: socketPath,
             channelId: "test",
             apiSpec: apiSpec,
-            config: config
+            maxMessageSize: 65536,
+            defaultTimeout: 30.0,
+            datagramTimeout: 5.0,
+            enableValidation: true
         )
         
         print("Testing ping command...")

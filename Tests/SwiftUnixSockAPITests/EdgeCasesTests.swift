@@ -203,7 +203,7 @@ final class EdgeCasesTests: XCTestCase {
         // Should validate successfully
         try APISpecificationParser.validate(apiSpec)
         
-        let client = try UnixSockAPIClient(
+        let client = try UnixSockAPIDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: apiSpec
@@ -211,10 +211,12 @@ final class EdgeCasesTests: XCTestCase {
         
         // Should be able to call command with no args
         do {
-            _ = try await client.publishCommand("noArgsCommand")
+            _ = try await client.sendCommand("noArgsCommand")
             XCTFail("Command should have failed due to no server running")
-        } catch UnixSocketError.notConnected, UnixSocketError.connectionFailed {
+        } catch UnixSockApiError.connectionError, UnixSockApiError.connectionRequired {
             // Expected - no server running
+        } catch UnixSockApiError.connectionTestFailed {
+            // Expected in SOCK_DGRAM - connection fails before validation can occur
         } catch {
             XCTFail("Command with no args should validate correctly but fail on connection: \(error)")
         }
@@ -280,18 +282,13 @@ final class EdgeCasesTests: XCTestCase {
         // Should validate successfully
         try APISpecificationParser.validate(apiSpec)
         
-        let client = try UnixSockAPIClient(
+        let client = try UnixSockAPIDatagramClient(
             socketPath: testSocketPath,
             channelId: "channel-with-dashes",
             apiSpec: apiSpec
         )
         
-        // Should be able to register handlers for all valid command names
-        for name in validNames {
-            try client.registerCommandHandler(name) { _, _ in
-                return ["success": AnyCodable(true)]
-            }
-        }
+        // Client should validate command names at send time, not registration time
     }
     
     func testConcurrentClientCreation() throws {
@@ -299,7 +296,7 @@ final class EdgeCasesTests: XCTestCase {
         
         // Create multiple clients concurrently
         let clients = try (0..<10).map { i in
-            try UnixSockAPIClient(
+            try UnixSockAPIDatagramClient(
                 socketPath: "\(testSocketPath!)-\(i)",
                 channelId: "testChannel",
                 apiSpec: apiSpec
@@ -308,12 +305,7 @@ final class EdgeCasesTests: XCTestCase {
         
         XCTAssertEqual(clients.count, 10)
         
-        // All clients should be independent
-        for (index, client) in clients.enumerated() {
-            try client.registerCommandHandler("testCommand") { _, _ in
-                return ["clientId": AnyCodable(index)]
-            }
-        }
+        // All clients should be independent - handlers would be server-side
     }
     
     func testSocketPathEdgeCases() {
@@ -323,7 +315,7 @@ final class EdgeCasesTests: XCTestCase {
         let longPath = "/tmp/" + String(repeating: "a", count: 100) + ".sock"
         
         do {
-            let client = try UnixSockAPIClient(
+            let client = try UnixSockAPIDatagramClient(
                 socketPath: longPath,
                 channelId: "testChannel",
                 apiSpec: apiSpec
@@ -338,7 +330,7 @@ final class EdgeCasesTests: XCTestCase {
         let specialPath = "/tmp/socket-with-special-chars_123.sock"
         
         do {
-            let client = try UnixSockAPIClient(
+            let client = try UnixSockAPIDatagramClient(
                 socketPath: specialPath,
                 channelId: "testChannel",
                 apiSpec: apiSpec

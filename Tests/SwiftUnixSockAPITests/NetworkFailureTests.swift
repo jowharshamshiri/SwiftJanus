@@ -48,19 +48,21 @@ final class NetworkFailureTests: XCTestCase {
     // MARK: - Connection Failure Tests
     
     func testConnectionToNonExistentSocket() async throws {
-        let client = try UnixSockAPIClient(
+        let client = try UnixSockAPIDatagramClient(
             socketPath: "/tmp/definitely-does-not-exist-12345.sock",
             channelId: "testChannel",
             apiSpec: testAPISpec
         )
         
         do {
-            _ = try await client.publishCommand("testCommand", args: ["data": AnyCodable("test")])
+            _ = try await client.sendCommand("testCommand", args: ["data": AnyCodable("test")])
             XCTFail("Connection to non-existent socket should fail")
-        } catch UnixSocketError.connectionFailed {
+        } catch UnixSockApiError.connectionError {
             // Expected
-        } catch UnixSocketError.notConnected {
+        } catch UnixSockApiError.connectionRequired {
             // Also acceptable
+        } catch UnixSockApiError.connectionTestFailed {
+            // Expected in SOCK_DGRAM architecture
         } catch {
             XCTFail("Unexpected error type: \(error)")
         }
@@ -76,16 +78,16 @@ final class NetworkFailureTests: XCTestCase {
         
         for invalidPath in invalidPaths {
             do {
-                let client = try UnixSockAPIClient(
+                let client = try UnixSockAPIDatagramClient(
                     socketPath: invalidPath,
                     channelId: "testChannel",
                     apiSpec: testAPISpec
                 )
                 
                 do {
-                    _ = try await client.publishCommand("testCommand")
+                    _ = try await client.sendCommand("testCommand")
                     XCTFail("Connection to invalid path should fail: \(invalidPath)")
-                } catch UnixSocketError.connectionFailed, UnixSocketError.notConnected {
+                } catch UnixSockApiError.connectionError, UnixSockApiError.connectionRequired {
                     // Expected
                 } catch {
                     // Other socket errors are also acceptable
@@ -97,33 +99,33 @@ final class NetworkFailureTests: XCTestCase {
     }
     
     func testConnectionTimeout() async throws {
-        let shortTimeoutConfig = UnixSockAPIClientConfig(connectionTimeout: 0.1) // Very short timeout
-        
-        let client = try UnixSockAPIClient(
+        // Connection timeout is handled internally by the datagram client
+        let client = try UnixSockAPIDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
-            apiSpec: testAPISpec,
-            config: shortTimeoutConfig
+            apiSpec: testAPISpec
         )
         
         let startTime = Date()
         
         do {
-            _ = try await client.publishCommand("testCommand")
+            _ = try await client.sendCommand("testCommand")
             XCTFail("Connection should timeout")
-        } catch UnixSocketError.connectionFailed(let message) {
-            // Should timeout quickly
+        } catch UnixSockApiError.connectionError(let message) {
+            // Should timeout quickly or fail immediately in SOCK_DGRAM
             let elapsedTime = Date().timeIntervalSince(startTime)
-            XCTAssertLessThan(elapsedTime, 1.0, "Connection should timeout quickly")
-            XCTAssertTrue(message.contains("timeout") || message.contains("Network is down"), 
-                         "Error should indicate timeout or network failure")
+            XCTAssertLessThan(elapsedTime, 1.0, "Connection should timeout quickly or fail immediately")
+            XCTAssertTrue(message.contains("timeout") || message.contains("Network is down") || message.contains("No such file or directory"), 
+                         "Error should indicate timeout, network failure, or socket not found")
+        } catch UnixSockApiError.connectionTestFailed {
+            // Expected in SOCK_DGRAM architecture - connection test fails immediately
         } catch {
             XCTFail("Unexpected error type: \(error)")
         }
     }
     
     func testRepeatedConnectionFailures() async throws {
-        let client = try UnixSockAPIClient(
+        let client = try UnixSockAPIDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -132,10 +134,12 @@ final class NetworkFailureTests: XCTestCase {
         // Test that repeated failures don't cause issues
         for i in 0..<10 {
             do {
-                _ = try await client.publishCommand("testCommand", args: ["iteration": AnyCodable(i)])
+                _ = try await client.sendCommand("testCommand", args: ["iteration": AnyCodable(i)])
                 XCTFail("Connection should fail on iteration \(i)")
-            } catch UnixSocketError.connectionFailed, UnixSocketError.notConnected {
+            } catch UnixSockApiError.connectionError, UnixSockApiError.connectionRequired {
                 // Expected - each attempt should fail cleanly
+            } catch UnixSockApiError.connectionTestFailed {
+                // Expected in SOCK_DGRAM architecture
             } catch {
                 XCTFail("Unexpected error on iteration \(i): \(error)")
             }
@@ -154,16 +158,16 @@ final class NetworkFailureTests: XCTestCase {
         
         for restrictedPath in restrictedPaths {
             do {
-                let client = try UnixSockAPIClient(
+                let client = try UnixSockAPIDatagramClient(
                     socketPath: restrictedPath,
                     channelId: "testChannel",
                     apiSpec: testAPISpec
                 )
                 
                 do {
-                    _ = try await client.publishCommand("testCommand")
+                    _ = try await client.sendCommand("testCommand")
                     // Might succeed if we actually have permission, that's okay
-                } catch UnixSocketError.connectionFailed {
+                } catch UnixSockApiError.connectionError {
                     // Expected - permission denied or path doesn't exist
                 } catch {
                     // Other errors are also acceptable for permission issues
@@ -178,7 +182,7 @@ final class NetworkFailureTests: XCTestCase {
     
     func testFileDescriptorExhaustion() async throws {
         // Test behavior when system runs out of file descriptors
-        let client = try UnixSockAPIClient(
+        let client = try UnixSockAPIDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -190,7 +194,7 @@ final class NetworkFailureTests: XCTestCase {
             for i in 0..<1000 {
                 group.addTask {
                     do {
-                        _ = try await client.publishCommand("testCommand", args: ["id": AnyCodable(i)])
+                        _ = try await client.sendCommand("testCommand", args: ["id": AnyCodable(i)])
                     } catch {
                         // Expected to fail due to resource limits or no server
                         // The important thing is that it fails gracefully
@@ -203,7 +207,7 @@ final class NetworkFailureTests: XCTestCase {
     }
     
     func testMemoryPressureHandling() async throws {
-        let client = try UnixSockAPIClient(
+        let client = try UnixSockAPIDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -219,7 +223,7 @@ final class NetworkFailureTests: XCTestCase {
                     let temporaryData = Array(repeating: largeData, count: 10) // ~4MB per task
                     
                     do {
-                        _ = try await client.publishCommand(
+                        _ = try await client.sendCommand(
                             "testCommand", 
                             args: ["data": AnyCodable("test\(i)"), "large": AnyCodable(temporaryData.joined())]
                         )
@@ -235,30 +239,30 @@ final class NetworkFailureTests: XCTestCase {
     
     func testSlowNetworkConditions() async throws {
         // Simulate slow network by using very short timeouts
-        let slowNetworkConfig = UnixSockAPIClientConfig(connectionTimeout: 0.01) // 10ms timeout
-        
-        let client = try UnixSockAPIClient(
+        // SOCK_DGRAM timeout handling is built into the client
+        let client = try UnixSockAPIDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
-            apiSpec: testAPISpec,
-            config: slowNetworkConfig
+            apiSpec: testAPISpec
         )
         
         let startTime = Date()
         
         do {
-            _ = try await client.publishCommand("testCommand")
+            _ = try await client.sendCommand("testCommand")
             XCTFail("Should timeout in slow network conditions")
-        } catch UnixSocketError.connectionFailed {
+        } catch UnixSockApiError.connectionError {
             let elapsedTime = Date().timeIntervalSince(startTime)
             XCTAssertLessThan(elapsedTime, 0.5, "Should timeout quickly in slow conditions")
+        } catch UnixSockApiError.connectionTestFailed {
+            // Expected in SOCK_DGRAM architecture
         } catch {
             XCTFail("Unexpected error in slow network test: \(error)")
         }
     }
     
     func testNetworkInterruption() async throws {
-        let client = try UnixSockAPIClient(
+        let client = try UnixSockAPIDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -270,7 +274,7 @@ final class NetworkFailureTests: XCTestCase {
             for i in 0..<20 {
                 group.addTask {
                     do {
-                        _ = try await client.publishCommand(
+                        _ = try await client.sendCommand(
                             "testCommand",
                             args: ["data": AnyCodable("interruption-test-\(i)")]
                         )
@@ -289,13 +293,13 @@ final class NetworkFailureTests: XCTestCase {
         // This test verifies behavior when trying to use the same socket path
         // from multiple clients (though our library is client-side only)
         
-        let client1 = try UnixSockAPIClient(
+        let client1 = try UnixSockAPIDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
         )
         
-        let client2 = try UnixSockAPIClient(
+        let client2 = try UnixSockAPIDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -308,7 +312,7 @@ final class NetworkFailureTests: XCTestCase {
     }
     
     func testSocketPathChanges() async throws {
-        let client = try UnixSockAPIClient(
+        let client = try UnixSockAPIDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -319,7 +323,7 @@ final class NetworkFailureTests: XCTestCase {
         
         // First operation
         do {
-            _ = try await client.publishCommand("testCommand")
+            _ = try await client.sendCommand("testCommand")
         } catch {
             // Expected to fail - no server
         }
@@ -331,7 +335,7 @@ final class NetworkFailureTests: XCTestCase {
         
         // Second operation (socket path now points to directory)
         do {
-            _ = try await client.publishCommand("testCommand")
+            _ = try await client.sendCommand("testCommand")
         } catch {
             // Should fail gracefully with appropriate error
         }
@@ -343,7 +347,7 @@ final class NetworkFailureTests: XCTestCase {
     // MARK: - Error Recovery Tests
     
     func testErrorRecoverySequence() async throws {
-        let client = try UnixSockAPIClient(
+        let client = try UnixSockAPIDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -356,7 +360,7 @@ final class NetworkFailureTests: XCTestCase {
         
         for operation in operations {
             do {
-                _ = try await client.publishCommand("testCommand", args: ["op": AnyCodable(operation)])
+                _ = try await client.sendCommand("testCommand", args: ["op": AnyCodable(operation)])
             } catch {
                 // Each failure should be independent
                 // The client should remain in a valid state for the next operation
@@ -365,14 +369,14 @@ final class NetworkFailureTests: XCTestCase {
         
         // After all failures, client should still be usable
         do {
-            _ = try await client.publishCommand("testCommand", args: ["final": AnyCodable("test")])
+            _ = try await client.sendCommand("testCommand", args: ["final": AnyCodable("test")])
         } catch {
             // Expected to fail, but should not crash
         }
     }
     
     func testConcurrentFailureHandling() async throws {
-        let client = try UnixSockAPIClient(
+        let client = try UnixSockAPIDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -383,7 +387,7 @@ final class NetworkFailureTests: XCTestCase {
             for i in 0..<30 {
                 group.addTask {
                     do {
-                        _ = try await client.publishCommand(
+                        _ = try await client.sendCommand(
                             "testCommand",
                             args: ["concurrentFailure": AnyCodable(i)]
                         )
@@ -396,7 +400,7 @@ final class NetworkFailureTests: XCTestCase {
         
         // After concurrent failures, client should still be functional
         do {
-            _ = try await client.publishCommand("testCommand", args: ["post": AnyCodable("concurrent")])
+            _ = try await client.sendCommand("testCommand", args: ["post": AnyCodable("concurrent")])
         } catch {
             // Expected to fail, but should not be in a broken state
         }
@@ -409,7 +413,7 @@ final class NetworkFailureTests: XCTestCase {
         let longPath = "/tmp/" + String(repeating: "a", count: 200) + ".sock"
         
         do {
-            let client = try UnixSockAPIClient(
+            let client = try UnixSockAPIDatagramClient(
                 socketPath: longPath,
                 channelId: "testChannel",
                 apiSpec: testAPISpec
@@ -418,14 +422,14 @@ final class NetworkFailureTests: XCTestCase {
             // If client creation succeeds, try to use it
             Task {
                 do {
-                    _ = try await client.publishCommand("testCommand")
+                    _ = try await client.sendCommand("testCommand")
                 } catch {
                     // Expected to fail due to path length or no server
                 }
             }
         } catch {
             // Client creation might fail due to path validation, which is fine
-            XCTAssertTrue(error is UnixSockAPIError, "Should be a validation error")
+            XCTAssertTrue(error is UnixSockApiError, "Should be a validation error")
         }
     }
     
@@ -440,14 +444,14 @@ final class NetworkFailureTests: XCTestCase {
         
         for specialPath in specialPaths {
             do {
-                let client = try UnixSockAPIClient(
+                let client = try UnixSockAPIDatagramClient(
                     socketPath: specialPath,
                     channelId: "testChannel",
                     apiSpec: testAPISpec
                 )
                 
                 do {
-                    _ = try await client.publishCommand("testCommand")
+                    _ = try await client.sendCommand("testCommand")
                 } catch {
                     // Expected to fail due to no server, but path handling should work
                 }
@@ -459,7 +463,7 @@ final class NetworkFailureTests: XCTestCase {
     }
     
     func testRapidConnectionCycling() async throws {
-        let client = try UnixSockAPIClient(
+        let client = try UnixSockAPIDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -470,7 +474,7 @@ final class NetworkFailureTests: XCTestCase {
             let startTime = Date()
             
             do {
-                _ = try await client.publishCommand("testCommand", args: ["cycle": AnyCodable(cycle)])
+                _ = try await client.sendCommand("testCommand", args: ["cycle": AnyCodable(cycle)])
             } catch {
                 // Expected to fail quickly
             }
@@ -485,7 +489,7 @@ final class NetworkFailureTests: XCTestCase {
     func testSystemLimitHandling() async throws {
         // Test behavior when approaching system limits
         let manyClients = (0..<100).map { i in
-            try? UnixSockAPIClient(
+            try? UnixSockAPIDatagramClient(
                 socketPath: "\(testSocketPath!)-\(i)",
                 channelId: "testChannel",
                 apiSpec: testAPISpec
@@ -497,7 +501,7 @@ final class NetworkFailureTests: XCTestCase {
             for (index, client) in manyClients.enumerated() {
                 group.addTask {
                     do {
-                        _ = try await client.publishCommand(
+                        _ = try await client.sendCommand(
                             "testCommand",
                             args: ["clientIndex": AnyCodable(index)]
                         )
@@ -512,7 +516,7 @@ final class NetworkFailureTests: XCTestCase {
     }
     
     func testGracefulDegradation() async throws {
-        let client = try UnixSockAPIClient(
+        let client = try UnixSockAPIDatagramClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -529,7 +533,7 @@ final class NetworkFailureTests: XCTestCase {
         
         for (index, testName) in testSequence.enumerated() {
             do {
-                _ = try await client.publishCommand(
+                _ = try await client.sendCommand(
                     "testCommand",
                     args: ["test": AnyCodable(testName), "index": AnyCodable(index)]
                 )

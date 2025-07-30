@@ -62,39 +62,35 @@ func main() async {
             print("Channels: \(apiSpec.channels.keys.joined(separator: ", "))")
             fflush(stdout)
             
-            // Create UnixSockAPIClient for server mode
-            let client = try await UnixSockAPIClient(
-                socketPath: socketPath,
-                channelId: "test",
-                apiSpec: apiSpec,
-                config: .default
-            )
+            // Create SOCK_DGRAM server using high-level API
+            let server = UnixDatagramServer()
             
-            // Register command handlers using the library
-            try await client.registerCommandHandler("ping") { command, context in
-                print("Received ping command: \(command.id)")
-                return [
+            // Register command handlers (defaults already included, these override them)
+            server.registerHandler("ping") { command in
+                print("Custom ping handler: \(command.id)")
+                return .success([
                     "pong": AnyCodable(true),
-                    "timestamp": AnyCodable(ISO8601DateFormatter().string(from: Date()))
-                ]
+                    "timestamp": AnyCodable(ISO8601DateFormatter().string(from: Date())),
+                    "server": AnyCodable("Swift")
+                ])
             }
             
-            try await client.registerCommandHandler("echo") { command, context in
-                print("Received echo command: \(command.id)")
-                if let args = command.args,
-                   let message = args["message"]?.value as? String {
-                    return ["echo": AnyCodable(message)]
-                } else {
-                    return ["echo": AnyCodable("No message provided")]
-                }
+            server.registerHandler("get_info") { command in
+                print("Custom get_info handler: \(command.id)")
+                return .success([
+                    "server": AnyCodable("Swift Unix Socket API"),
+                    "version": AnyCodable("1.0.0"),
+                    "timestamp": AnyCodable(ISO8601DateFormatter().string(from: Date())),
+                    "socket_path": AnyCodable(socketPath)
+                ])
             }
             
             print("Command handlers registered")
             print("Swift server listening on \(socketPath). Press Ctrl+C to stop.")
             fflush(stdout)
             
-            // Start listening using the library
-            try await client.startListening()
+            // Start listening using the high-level server API
+            try await server.startListening(socketPath)
             
             // Keep the server running
             try await Task.sleep(nanoseconds: UInt64.max)

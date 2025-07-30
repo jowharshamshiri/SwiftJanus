@@ -18,7 +18,14 @@ public class UnixSockAPIDatagramClient {
         defaultTimeout: TimeInterval = 30.0,
         datagramTimeout: TimeInterval = 5.0,
         enableValidation: Bool = true
-    ) {
+    ) throws {
+        // Validate constructor inputs (matching Go/Rust implementations)
+        try Self.validateConstructorInputs(
+            socketPath: socketPath,
+            channelId: channelId,
+            apiSpec: apiSpec
+        )
+        
         self.socketPath = socketPath
         self.channelId = channelId
         self.apiSpec = apiSpec
@@ -117,11 +124,76 @@ public class UnixSockAPIDatagramClient {
     
     // MARK: - Private Methods
     
+    /// Validate constructor inputs (matching Go/Rust implementations)
+    private static func validateConstructorInputs(
+        socketPath: String,
+        channelId: String,
+        apiSpec: APISpecification?
+    ) throws {
+        // Validate socket path
+        guard !socketPath.isEmpty else {
+            throw UnixSockApiError.invalidSocketPath("Socket path cannot be empty")
+        }
+        
+        // Security validation for socket path (matching Go implementation)
+        if socketPath.contains("\0") {
+            throw UnixSockApiError.invalidSocketPath("Socket path contains invalid null byte")
+        }
+        
+        if socketPath.contains("..") {
+            throw UnixSockApiError.invalidSocketPath("Socket path contains path traversal sequence")
+        }
+        
+        // Validate channel ID
+        guard !channelId.isEmpty else {
+            throw UnixSockApiError.invalidChannel("Channel ID cannot be empty")
+        }
+        
+        // Security validation for channel ID (matching Go implementation)
+        let forbiddenChars = CharacterSet(charactersIn: "\0;`$|&\n\r\t")
+        if channelId.rangeOfCharacter(from: forbiddenChars) != nil {
+            throw UnixSockApiError.invalidChannel("Channel ID contains forbidden characters")
+        }
+        
+        if channelId.contains("..") || channelId.hasPrefix("/") {
+            throw UnixSockApiError.invalidChannel("Channel ID contains invalid path characters")
+        }
+        
+        // Validate API spec and channel exists if provided
+        if let spec = apiSpec {
+            guard !spec.channels.isEmpty else {
+                throw UnixSockApiError.validationError("API specification must contain at least one channel")
+            }
+            
+            guard spec.channels.keys.contains(channelId) else {
+                throw UnixSockApiError.invalidChannel(channelId)
+            }
+        }
+    }
+    
     private func validateCommandAgainstSpec(_ spec: APISpecification, command: SocketCommand) throws {
-        // Implementation would validate command against spec
-        // For now, just check if channel exists
-        guard spec.channels.keys.contains(command.channelId) else {
-            throw UnixSockApiError.validationError("Channel \\(command.channelId) not found in API specification")
+        // Check if channel exists
+        guard let channel = spec.channels[command.channelId] else {
+            throw UnixSockApiError.validationError("Channel \(command.channelId) not found in API specification")
+        }
+        
+        // Check if command exists in channel
+        guard channel.commands.keys.contains(command.command) else {
+            throw UnixSockApiError.unknownCommand(command.command)
+        }
+        
+        // Validate command arguments
+        if let commandSpec = channel.commands[command.command],
+           let specArgs = commandSpec.args {
+            
+            let args = command.args ?? [:]  // Use empty dict if no args provided
+            
+            // Check for required arguments
+            for (argName, argSpec) in specArgs {
+                if argSpec.required && args[argName] == nil {
+                    throw UnixSockApiError.missingRequiredArgument(argName)
+                }
+            }
         }
     }
     
@@ -137,5 +209,16 @@ public class UnixSockAPIDatagramClient {
     
     public var apiSpecification: APISpecification? {
         return apiSpec
+    }
+    
+    /// Send a ping command and return success/failure
+    /// Convenience method for testing connectivity with a simple ping
+    public func ping() async -> Bool {
+        do {
+            let response = try await sendCommand("ping", args: nil, timeout: 10.0)
+            return response.success
+        } catch {
+            return false
+        }
     }
 }

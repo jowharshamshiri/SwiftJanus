@@ -69,7 +69,7 @@ public struct SocketResponse: Codable, Sendable {
 }
 
 /// Error information in socket responses
-public struct SocketError: Codable, Sendable {
+public struct SocketError: Error, Codable, Sendable {
     public let code: String
     public let message: String
     public let details: [String: AnyCodable]?
@@ -124,6 +124,7 @@ public enum UnixSockApiError: Error, LocalizedError {
     case connectionClosed(String)
     case connectionTestFailed(String)
     case timeout(String)
+    case timeoutError(String)
     case protocolError(String)
     
     public var errorDescription: String? {
@@ -176,6 +177,8 @@ public enum UnixSockApiError: Error, LocalizedError {
             return "Connection test failed: \(error)"
         case .timeout(let error):
             return "Timeout: \(error)"
+        case .timeoutError(let error):
+            return "Timeout error: \(error)"
         case .protocolError(let error):
             return "Protocol error: \(error)"
         }

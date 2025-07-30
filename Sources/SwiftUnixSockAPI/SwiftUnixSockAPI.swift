@@ -1,11 +1,20 @@
 // SwiftUnixSockAPI.swift
-// General-purpose Unix Socket API communication library
+// Cross-platform Unix Socket API communication library
 
 import Foundation
 
 /// Main entry point for SwiftUnixSockAPI library
 public final class SwiftUnixSockAPI {
-    public static let version = "1.0.0"
+    public static let version = "2.0.0"
     
     private init() {}
 }
+
+// Export high-level SOCK_DGRAM APIs for simple usage
+public typealias SocketServer = UnixDatagramServer
+public typealias SocketClient = UnixSockAPIDatagramClient
+
+// Re-export core protocol types for convenience
+public typealias Command = SocketCommand
+public typealias Response = SocketResponse
+public typealias ServerError = SocketError
