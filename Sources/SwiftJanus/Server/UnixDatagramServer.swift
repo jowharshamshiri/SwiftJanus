@@ -138,7 +138,7 @@ public class UnixDatagramServer {
                     result["echo"] = AnyCodable("Hello from Swift SOCK_DGRAM server!")
                 }
             case "get_info":
-                result["server"] = AnyCodable("Swift Unix Socket API")
+                result["server"] = AnyCodable("Swift Janus")
                 result["version"] = AnyCodable("1.0.0")
                 result["timestamp"] = AnyCodable(Date().timeIntervalSince1970)
             case "validate":

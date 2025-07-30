@@ -1,5 +1,5 @@
 // SwiftJanus.swift
-// Cross-platform Unix Socket API communication library
+// Cross-platform Janus communication library
 
 import Foundation
 

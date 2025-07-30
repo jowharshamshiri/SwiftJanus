@@ -229,4 +229,4 @@ let response = try await client.sendCommand(
 print("Processed data for command: \(response.commandId)")
 ```
 
-This implementation provides a complete, production-ready Unix socket API library that meets all specified requirements with comprehensive testing and documentation.
+This implementation provides a complete, production-ready Janus library that meets all specified requirements with comprehensive testing and documentation.

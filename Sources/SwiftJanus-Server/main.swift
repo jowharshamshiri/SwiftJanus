@@ -39,7 +39,7 @@ func main() async {
             i += 1
         }
         
-        print("Starting Swift Unix Socket API Server on: \(socketPath)")
+        print("Starting Swift Janus Server on: \(socketPath)")
         print("Loading spec from: \(specPath)")
         fflush(stdout)
         
@@ -78,7 +78,7 @@ func main() async {
             server.registerHandler("get_info") { command in
                 print("Custom get_info handler: \(command.id)")
                 return .success([
-                    "server": AnyCodable("Swift Unix Socket API"),
+                    "server": AnyCodable("Swift Janus"),
                     "version": AnyCodable("1.0.0"),
                     "timestamp": AnyCodable(ISO8601DateFormatter().string(from: Date())),
                     "socket_path": AnyCodable(socketPath)
