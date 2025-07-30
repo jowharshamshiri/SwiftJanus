@@ -254,17 +254,29 @@ final class ConcurrencyTests: XCTestCase {
         
         // Test concurrent access to configuration
         let accessCount = 100
-        var configAccesses = 0
+        let configAccesses = DispatchSemaphore(value: 0)
+        let accessQueue = DispatchQueue(label: "config-access-counter", attributes: .concurrent)
+        var actualAccesses = 0
         
         DispatchQueue.concurrentPerform(iterations: accessCount) { _ in
             // Access configuration from multiple threads using proper getter
             let _ = client.configuration.maxConcurrentConnections
             let _ = client.configuration.maxMessageSize
             let _ = client.configuration.connectionTimeout
-            configAccesses += 1
+            
+            // Thread-safe increment
+            accessQueue.async(flags: .barrier) {
+                actualAccesses += 1
+                configAccesses.signal()
+            }
         }
         
-        XCTAssertEqual(configAccesses, accessCount)
+        // Wait for all accesses to complete
+        for _ in 0..<accessCount {
+            configAccesses.wait()
+        }
+        
+        XCTAssertEqual(actualAccesses, accessCount)
     }
     
     func testThreadSafetyOfAPISpecAccess() throws {

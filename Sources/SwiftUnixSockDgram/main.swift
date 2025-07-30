@@ -31,6 +31,12 @@ struct UnixSockDgram: AsyncParsableCommand {
     @Option(name: .long, help: "Message to send")
     var message: String = "hello"
     
+    @Option(name: .long, help: "API specification file (required for validation)")
+    var spec: String?
+    
+    @Option(name: .long, help: "Channel ID for command routing")
+    var channel: String = "test"
+    
     func run() async throws {
         if listen {
             try listenForDatagrams()
@@ -174,6 +180,31 @@ struct UnixSockDgram: AsyncParsableCommand {
             result["implementation"] = AnyCodable("Swift")
             result["version"] = AnyCodable("1.0.0")
             result["protocol"] = AnyCodable("SOCK_DGRAM")
+        case "validate":
+            // Validate JSON payload
+            if let message = args?["message"],
+               let messageString = message.value as? String {
+                do {
+                    let jsonData = try JSONSerialization.jsonObject(with: messageString.data(using: .utf8)!, options: [])
+                    result["valid"] = AnyCodable(true)
+                    result["data"] = AnyCodable("JSON parsed successfully")
+                } catch {
+                    result["valid"] = AnyCodable(false)
+                    result["error"] = AnyCodable("Invalid JSON format")
+                    result["reason"] = AnyCodable(error.localizedDescription)
+                }
+            } else {
+                result["valid"] = AnyCodable(false)
+                result["error"] = AnyCodable("No message provided for validation")
+            }
+        case "slow_process":
+            // Simulate a slow process that might timeout
+            Thread.sleep(forTimeInterval: 2.0) // 2 second delay
+            result["processed"] = AnyCodable(true)
+            result["delay"] = AnyCodable("2000ms")
+            if let message = args?["message"] {
+                result["message"] = message
+            }
         default:
             success = false
             result["error"] = AnyCodable("Unknown command: \(command)")
@@ -207,11 +238,21 @@ struct UnixSockDgram: AsyncParsableCommand {
                 }
             }
             
-            responseData.withUnsafeBytes { dataPtr in
+            let sendResult = responseData.withUnsafeBytes { dataPtr in
                 withUnsafePointer(to: &replyAddr) { addrPtr in
                     addrPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
                         Darwin.sendto(replySocketFD, dataPtr.baseAddress, responseData.count, 0, sockaddrPtr, socklen_t(MemoryLayout<sockaddr_un>.size))
                     }
+                }
+            }
+            
+            // Check for send errors, especially message too long
+            if sendResult == -1 {
+                let errorCode = errno
+                if errorCode == EMSGSIZE {
+                    print("Error: Response payload too large for SOCK_DGRAM (size: \(responseData.count) bytes): Unix domain datagram sockets have system-imposed size limits, typically around 64KB. Consider reducing payload size or using chunked messages")
+                } else {
+                    print("Failed to send response: errno \(errorCode)")
                 }
             }
         } catch {
