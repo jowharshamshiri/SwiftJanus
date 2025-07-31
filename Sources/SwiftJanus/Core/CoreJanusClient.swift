@@ -2,7 +2,7 @@ import Foundation
 
 /// Low-level Unix domain datagram socket client (SOCK_DGRAM)
 /// Connectionless implementation for cross-language compatibility
-public class JanusClient {
+public class CoreJanusClient {
     private let socketPath: String
     private let maxMessageSize: Int
     private let datagramTimeout: TimeInterval

@@ -6,7 +6,7 @@ public class JanusClient {
     private let socketPath: String
     private let channelId: String
     private let apiSpec: APISpecification?
-    private let janusClient: JanusClient
+    private let coreClient: CoreJanusClient
     private let defaultTimeout: TimeInterval
     private let enableValidation: Bool
     
@@ -31,7 +31,7 @@ public class JanusClient {
         self.apiSpec = apiSpec
         self.defaultTimeout = defaultTimeout
         self.enableValidation = enableValidation
-        self.janusClient = JanusClient(
+        self.coreClient = CoreJanusClient(
             socketPath: socketPath,
             maxMessageSize: maxMessageSize,
             datagramTimeout: datagramTimeout
@@ -46,7 +46,7 @@ public class JanusClient {
     ) async throws -> SocketResponse {
         // Generate command ID and response socket path
         let commandId = UUID().uuidString
-        let responseSocketPath = janusClient.generateResponseSocketPath()
+        let responseSocketPath = coreClient.generateResponseSocketPath()
         
         // Create socket command
         let socketCommand = SocketCommand(
@@ -68,7 +68,7 @@ public class JanusClient {
         let commandData = try encoder.encode(socketCommand)
         
         // Send datagram and wait for response
-        let responseData = try await janusClient.sendDatagram(commandData, responseSocketPath: responseSocketPath)
+        let responseData = try await coreClient.sendDatagram(commandData, responseSocketPath: responseSocketPath)
         
         // Deserialize response
         let decoder = JSONDecoder()
@@ -114,12 +114,12 @@ public class JanusClient {
         let commandData = try encoder.encode(socketCommand)
         
         // Send datagram without waiting for response
-        try await janusClient.sendDatagramNoResponse(commandData)
+        try await coreClient.sendDatagramNoResponse(commandData)
     }
     
     /// Test connectivity to the server
     public func testConnection() async throws {
-        try await janusClient.testConnection()
+        try await coreClient.testConnection()
     }
     
     // MARK: - Private Methods

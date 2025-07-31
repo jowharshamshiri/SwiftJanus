@@ -127,29 +127,12 @@ struct JanusDgram: AsyncParsableCommand {
         print("Sending SOCK_DGRAM to: \(target)")
         
         do {
-            let client = try JanusClient(socketPath: target)
-            
-            // Create response socket path
-            let responseSocket = "/tmp/swift-response-\(ProcessInfo.processInfo.processIdentifier).sock"
+            let client = try JanusClient(socketPath: target, channelId: "swift-client")
             
             let args: [String: AnyCodable] = ["message": AnyCodable(message)]
             
-            let cmd = SocketCommand(
-                id: generateId(),
-                channelId: "test",
-                command: command,
-                replyTo: responseSocket,
-                args: args.isEmpty ? nil : args,
-                timeout: 5.0,
-                timestamp: Date().timeIntervalSince1970
-            )
-            
-            let cmdData = try JSONEncoder().encode(cmd)
-            
-            // Send datagram and wait for response
-            let responseData = try await client.sendDatagram(cmdData, responseSocketPath: responseSocket)
-            
-            let response = try JSONDecoder().decode(SocketResponse.self, from: responseData)
+            // Send command using high-level API
+            let response = try await client.sendCommand(command, args: args, timeout: 5.0)
             print("Response: Success=\(response.success), Result=\(response.result ?? [:])")
             
         } catch JanusError.connectionTestFailed(let message) {
