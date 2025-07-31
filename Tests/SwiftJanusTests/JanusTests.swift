@@ -169,7 +169,7 @@ final class JanusTests: XCTestCase {
     
     func testJanusClientInitialization() {
         let socketPath = "/tmp/test-socket.sock"
-        let client = try? JanusDatagramClient(
+        let client = try? JanusClient(
             socketPath: socketPath,
             channelId: "test",
             apiSpec: nil

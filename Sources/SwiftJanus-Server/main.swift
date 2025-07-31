@@ -63,7 +63,7 @@ func main() async {
             fflush(stdout)
             
             // Create SOCK_DGRAM server using high-level API
-            let server = UnixDatagramServer()
+            let server = JanusServer()
             
             // Register command handlers (defaults already included, these override them)
             server.registerHandler("ping") { command in

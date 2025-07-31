@@ -2,11 +2,11 @@ import Foundation
 
 /// High-level API client for SOCK_DGRAM Unix socket communication
 /// Connectionless implementation with command validation and response correlation
-public class JanusDatagramClient {
+public class JanusClient {
     private let socketPath: String
     private let channelId: String
     private let apiSpec: APISpecification?
-    private let datagramClient: UnixDatagramClient
+    private let janusClient: JanusClient
     private let defaultTimeout: TimeInterval
     private let enableValidation: Bool
     
@@ -31,7 +31,7 @@ public class JanusDatagramClient {
         self.apiSpec = apiSpec
         self.defaultTimeout = defaultTimeout
         self.enableValidation = enableValidation
-        self.datagramClient = UnixDatagramClient(
+        self.janusClient = JanusClient(
             socketPath: socketPath,
             maxMessageSize: maxMessageSize,
             datagramTimeout: datagramTimeout
@@ -46,7 +46,7 @@ public class JanusDatagramClient {
     ) async throws -> SocketResponse {
         // Generate command ID and response socket path
         let commandId = UUID().uuidString
-        let responseSocketPath = datagramClient.generateResponseSocketPath()
+        let responseSocketPath = janusClient.generateResponseSocketPath()
         
         // Create socket command
         let socketCommand = SocketCommand(
@@ -68,7 +68,7 @@ public class JanusDatagramClient {
         let commandData = try encoder.encode(socketCommand)
         
         // Send datagram and wait for response
-        let responseData = try await datagramClient.sendDatagram(commandData, responseSocketPath: responseSocketPath)
+        let responseData = try await janusClient.sendDatagram(commandData, responseSocketPath: responseSocketPath)
         
         // Deserialize response
         let decoder = JSONDecoder()
@@ -114,12 +114,12 @@ public class JanusDatagramClient {
         let commandData = try encoder.encode(socketCommand)
         
         // Send datagram without waiting for response
-        try await datagramClient.sendDatagramNoResponse(commandData)
+        try await janusClient.sendDatagramNoResponse(commandData)
     }
     
     /// Test connectivity to the server
     public func testConnection() async throws {
-        try await datagramClient.testConnection()
+        try await janusClient.testConnection()
     }
     
     // MARK: - Private Methods

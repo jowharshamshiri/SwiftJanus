@@ -11,8 +11,8 @@ public final class SwiftJanus {
 }
 
 // Export high-level SOCK_DGRAM APIs for simple usage
-public typealias SocketServer = UnixDatagramServer
-public typealias SocketClient = JanusDatagramClient
+public typealias SocketServer = JanusServer
+public typealias SocketClient = JanusClient
 
 // Re-export core protocol types for convenience
 public typealias Command = SocketCommand

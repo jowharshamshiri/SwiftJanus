@@ -26,7 +26,7 @@ final class TimeoutTests: XCTestCase {
     }
     
     func testCommandWithTimeout() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "timeoutChannel",
             apiSpec: testAPISpec
@@ -69,7 +69,7 @@ final class TimeoutTests: XCTestCase {
     }
     
     func testCommandTimeoutErrorMessage() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "timeoutChannel",
             apiSpec: testAPISpec
@@ -100,7 +100,7 @@ final class TimeoutTests: XCTestCase {
     }
     
     func testUUIDGeneration() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "timeoutChannel",
             apiSpec: testAPISpec
@@ -125,7 +125,7 @@ final class TimeoutTests: XCTestCase {
     }
     
     func testMultipleCommandsWithDifferentTimeouts() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "timeoutChannel",
             apiSpec: testAPISpec
@@ -197,7 +197,7 @@ final class TimeoutTests: XCTestCase {
     }
     
     func testDefaultTimeout() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "timeoutChannel",
             apiSpec: testAPISpec
@@ -220,7 +220,7 @@ final class TimeoutTests: XCTestCase {
     }
     
     func testConcurrentTimeouts() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "timeoutChannel",
             apiSpec: testAPISpec

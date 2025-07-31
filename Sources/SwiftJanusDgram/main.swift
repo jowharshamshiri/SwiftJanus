@@ -127,7 +127,7 @@ struct JanusDgram: AsyncParsableCommand {
         print("Sending SOCK_DGRAM to: \(target)")
         
         do {
-            let client = try UnixDatagramClient(socketPath: target)
+            let client = try JanusClient(socketPath: target)
             
             // Create response socket path
             let responseSocket = "/tmp/swift-response-\(ProcessInfo.processInfo.processIdentifier).sock"
@@ -209,6 +209,9 @@ struct JanusDgram: AsyncParsableCommand {
             success = false
             result["error"] = AnyCodable("Unknown command: \(command)")
         }
+        
+        // Note: ResponseValidator integration would require API specification loading
+        // For now, responses are sent without validation in this standalone binary
         
         let response = SocketResponse(
             commandId: commandId,

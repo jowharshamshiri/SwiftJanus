@@ -26,7 +26,7 @@ final class StatelessCommunicationTests: XCTestCase {
     }
     
     func testStatelessCommandValidation() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "statelessChannel",
             apiSpec: testAPISpec
@@ -58,7 +58,7 @@ final class StatelessCommunicationTests: XCTestCase {
     }
     
     func testMultipleIndependentCommands() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "statelessChannel",
             apiSpec: testAPISpec
@@ -86,7 +86,7 @@ final class StatelessCommunicationTests: XCTestCase {
     }
     
     func testConcurrentStatelessCommands() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "statelessChannel",
             apiSpec: testAPISpec
@@ -110,7 +110,7 @@ final class StatelessCommunicationTests: XCTestCase {
     }
     
     func testCommandHandlerRegistration() throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "statelessChannel",
             apiSpec: testAPISpec
@@ -126,7 +126,7 @@ final class StatelessCommunicationTests: XCTestCase {
     }
     
     func testArgumentValidationWithoutConnection() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "statelessChannel",
             apiSpec: testAPISpec
@@ -157,13 +157,13 @@ final class StatelessCommunicationTests: XCTestCase {
     }
     
     func testChannelIsolation() throws {
-        let client1 = try JanusDatagramClient(
+        let client1 = try JanusClient(
             socketPath: testSocketPath,
             channelId: "channel1",
             apiSpec: createMultiChannelAPISpec()
         )
         
-        let client2 = try JanusDatagramClient(
+        let client2 = try JanusClient(
             socketPath: testSocketPath,
             channelId: "channel2",
             apiSpec: createMultiChannelAPISpec()
@@ -181,7 +181,7 @@ final class StatelessCommunicationTests: XCTestCase {
     }
     
     func testErrorHandlingInStatelessMode() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "statelessChannel",
             apiSpec: testAPISpec
@@ -199,7 +199,7 @@ final class StatelessCommunicationTests: XCTestCase {
         let invalidSpec1 = APISpecification(version: "1.0.0", channels: [:])
         
         XCTAssertThrowsError(
-            try JanusDatagramClient(
+            try JanusClient(
                 socketPath: testSocketPath,
                 channelId: "anyChannel",
                 apiSpec: invalidSpec1
@@ -210,7 +210,7 @@ final class StatelessCommunicationTests: XCTestCase {
         let validSpec = createStatelessTestAPISpec()
         
         XCTAssertThrowsError(
-            try JanusDatagramClient(
+            try JanusClient(
                 socketPath: testSocketPath,
                 channelId: "nonExistentChannel",
                 apiSpec: validSpec

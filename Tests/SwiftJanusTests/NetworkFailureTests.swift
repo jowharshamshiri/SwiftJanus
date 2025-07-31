@@ -48,7 +48,7 @@ final class NetworkFailureTests: XCTestCase {
     // MARK: - Connection Failure Tests
     
     func testConnectionToNonExistentSocket() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: "/tmp/definitely-does-not-exist-12345.sock",
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -78,7 +78,7 @@ final class NetworkFailureTests: XCTestCase {
         
         for invalidPath in invalidPaths {
             do {
-                let client = try JanusDatagramClient(
+                let client = try JanusClient(
                     socketPath: invalidPath,
                     channelId: "testChannel",
                     apiSpec: testAPISpec
@@ -100,7 +100,7 @@ final class NetworkFailureTests: XCTestCase {
     
     func testConnectionTimeout() async throws {
         // Connection timeout is handled internally by the datagram client
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -125,7 +125,7 @@ final class NetworkFailureTests: XCTestCase {
     }
     
     func testRepeatedConnectionFailures() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -158,7 +158,7 @@ final class NetworkFailureTests: XCTestCase {
         
         for restrictedPath in restrictedPaths {
             do {
-                let client = try JanusDatagramClient(
+                let client = try JanusClient(
                     socketPath: restrictedPath,
                     channelId: "testChannel",
                     apiSpec: testAPISpec
@@ -182,7 +182,7 @@ final class NetworkFailureTests: XCTestCase {
     
     func testFileDescriptorExhaustion() async throws {
         // Test behavior when system runs out of file descriptors
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -207,7 +207,7 @@ final class NetworkFailureTests: XCTestCase {
     }
     
     func testMemoryPressureHandling() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -240,7 +240,7 @@ final class NetworkFailureTests: XCTestCase {
     func testSlowNetworkConditions() async throws {
         // Simulate slow network by using very short timeouts
         // SOCK_DGRAM timeout handling is built into the client
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -262,7 +262,7 @@ final class NetworkFailureTests: XCTestCase {
     }
     
     func testNetworkInterruption() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -293,13 +293,13 @@ final class NetworkFailureTests: XCTestCase {
         // This test verifies behavior when trying to use the same socket path
         // from multiple clients (though our library is client-side only)
         
-        let client1 = try JanusDatagramClient(
+        let client1 = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
         )
         
-        let client2 = try JanusDatagramClient(
+        let client2 = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -312,7 +312,7 @@ final class NetworkFailureTests: XCTestCase {
     }
     
     func testSocketPathChanges() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -347,7 +347,7 @@ final class NetworkFailureTests: XCTestCase {
     // MARK: - Error Recovery Tests
     
     func testErrorRecoverySequence() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -376,7 +376,7 @@ final class NetworkFailureTests: XCTestCase {
     }
     
     func testConcurrentFailureHandling() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -413,7 +413,7 @@ final class NetworkFailureTests: XCTestCase {
         let longPath = "/tmp/" + String(repeating: "a", count: 200) + ".sock"
         
         do {
-            let client = try JanusDatagramClient(
+            let client = try JanusClient(
                 socketPath: longPath,
                 channelId: "testChannel",
                 apiSpec: testAPISpec
@@ -444,7 +444,7 @@ final class NetworkFailureTests: XCTestCase {
         
         for specialPath in specialPaths {
             do {
-                let client = try JanusDatagramClient(
+                let client = try JanusClient(
                     socketPath: specialPath,
                     channelId: "testChannel",
                     apiSpec: testAPISpec
@@ -463,7 +463,7 @@ final class NetworkFailureTests: XCTestCase {
     }
     
     func testRapidConnectionCycling() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -489,7 +489,7 @@ final class NetworkFailureTests: XCTestCase {
     func testSystemLimitHandling() async throws {
         // Test behavior when approaching system limits
         let manyClients = (0..<100).map { i in
-            try? JanusDatagramClient(
+            try? JanusClient(
                 socketPath: "\(testSocketPath!)-\(i)",
                 channelId: "testChannel",
                 apiSpec: testAPISpec
@@ -516,7 +516,7 @@ final class NetworkFailureTests: XCTestCase {
     }
     
     func testGracefulDegradation() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec

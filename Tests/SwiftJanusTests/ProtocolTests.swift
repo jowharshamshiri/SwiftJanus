@@ -48,7 +48,7 @@ final class ProtocolTests: XCTestCase {
     // MARK: - SOCK_DGRAM JSON Serialization Tests
     
     func testJSONSerializationValidation() throws {
-        // SOCK_DGRAM uses JanusDatagramClient - test JSON parsing directly
+        // SOCK_DGRAM uses JanusClient - test JSON parsing directly
         
         // Test various JSON messages for SOCK_DGRAM communication
         let testMessages = [
@@ -99,7 +99,7 @@ final class ProtocolTests: XCTestCase {
     }
     
     func testMalformedJSONValidation() throws {
-        // SOCK_DGRAM uses JanusDatagramClient - test JSON parsing directly
+        // SOCK_DGRAM uses JanusClient - test JSON parsing directly
         
         // Test various malformed messages that should fail JSON parsing
         let definitivelyInvalidMessages = [
@@ -352,7 +352,7 @@ final class ProtocolTests: XCTestCase {
         
         for spec in specs {
             // Should be able to create clients with different versions
-            let client = try JanusDatagramClient(
+            let client = try JanusClient(
                 socketPath: testSocketPath,
                 channelId: "testChannel",
                 apiSpec: spec
@@ -445,7 +445,7 @@ final class ProtocolTests: XCTestCase {
         let binaryData = Data([0x00, 0x01, 0x02, 0xFF, 0xFE, 0xFD])
         
         // Create SOCK_DGRAM client
-        let socketClient = try JanusDatagramClient(
+        let socketClient = try JanusClient(
             socketPath: testSocketPath,
             channelId: "test",
             apiSpec: nil

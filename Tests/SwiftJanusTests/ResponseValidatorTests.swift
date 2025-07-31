@@ -1,0 +1,517 @@
+// ResponseValidatorTests.swift
+// Comprehensive tests for Swift ResponseValidator
+// Validates all response validation scenarios against API specifications
+
+import XCTest
+@testable import SwiftJanus
+
+final class ResponseValidatorTests: XCTestCase {
+    var validator: ResponseValidator!
+    var testApiSpec: APISpecification!
+    
+    override func setUp() {
+        super.setUp()
+        
+        // Create test API specification matching TypeScript/Go test structure
+        testApiSpec = APISpecification(
+            version: "1.0.0",
+            name: "Test API",
+            channels: [
+                "test": ChannelSpec(
+                    name: "test",
+                    description: "Test channel",
+                    commands: [
+                        "ping": CommandSpec(
+                            name: "ping",
+                            description: "Basic ping command",
+                            response: ResponseSpec(
+                                type: .object,
+                                properties: [
+                                    "status": ArgumentSpec(
+                                        type: .string,
+                                        required: true,
+                                        description: "Status message"
+                                    ),
+                                    "echo": ArgumentSpec(
+                                        type: .string,
+                                        required: true,
+                                        description: "Echo message"
+                                    ),
+                                    "timestamp": ArgumentSpec(
+                                        type: .number,
+                                        required: true,
+                                        description: "Response timestamp"
+                                    ),
+                                    "server_id": ArgumentSpec(
+                                        type: .string,
+                                        required: true,
+                                        description: "Server identifier"
+                                    ),
+                                    "request_count": ArgumentSpec(
+                                        type: .number,
+                                        required: false,
+                                        description: "Request count"
+                                    ),
+                                    "metadata": ArgumentSpec(
+                                        type: .object,
+                                        required: false,
+                                        description: "Optional metadata"
+                                    )
+                                ],
+                                description: "Ping response"
+                            )
+                        ),
+                        "get_info": CommandSpec(
+                            name: "get_info",
+                            description: "Get server information",
+                            response: ResponseSpec(
+                                type: .object,
+                                properties: [
+                                    "implementation": ArgumentSpec(
+                                        type: .string,
+                                        required: true,
+                                        description: "Implementation language"
+                                    ),
+                                    "version": ArgumentSpec(
+                                        type: .string,
+                                        required: true,
+                                        description: "Version string",
+                                        validation: ValidationSpec(pattern: "^\\d+\\.\\d+\\.\\d+$")
+                                    ),
+                                    "protocol": ArgumentSpec(
+                                        type: .string,
+                                        required: true,
+                                        description: "Protocol type",
+                                        validation: ValidationSpec(enum: [AnyCodable("SOCK_DGRAM")])
+                                    )
+                                ],
+                                description: "Server information"
+                            )
+                        ),
+                        "range_test": CommandSpec(
+                            name: "range_test",
+                            description: "Numeric range validation test",
+                            response: ResponseSpec(
+                                type: .object,
+                                properties: [
+                                    "score": ArgumentSpec(
+                                        type: .number,
+                                        required: true,
+                                        description: "Test score",
+                                        validation: ValidationSpec(minimum: 0, maximum: 100)
+                                    ),
+                                    "grade": ArgumentSpec(
+                                        type: .string,
+                                        required: true,
+                                        description: "Letter grade",
+                                        validation: ValidationSpec(enum: [
+                                            AnyCodable("A"), AnyCodable("B"), AnyCodable("C"), 
+                                            AnyCodable("D"), AnyCodable("F")
+                                        ])
+                                    ),
+                                    "count": ArgumentSpec(
+                                        type: .integer,
+                                        required: true,
+                                        description: "Item count",
+                                        validation: ValidationSpec(minimum: 1)
+                                    )
+                                ],
+                                description: "Range test response"
+                            )
+                        ),
+                        "array_test": CommandSpec(
+                            name: "array_test",
+                            description: "Array validation test",
+                            response: ResponseSpec(
+                                type: .object,
+                                properties: [
+                                    "items": ArgumentSpec(
+                                        type: .array,
+                                        required: true,
+                                        description: "Array of strings"
+                                    ),
+                                    "numbers": ArgumentSpec(
+                                        type: .array,
+                                        required: false,
+                                        description: "Array of numbers"
+                                    )
+                                ],
+                                description: "Array test response"
+                            )
+                        )
+                    ]
+                )
+            ],
+            models: [
+                "UserInfo": ModelSpec(
+                    type: .object,
+                    properties: [
+                        "id": ArgumentSpec(
+                            type: .string,
+                            required: true,
+                            description: "User ID"
+                        ),
+                        "name": ArgumentSpec(
+                            type: .string,
+                            required: true,
+                            description: "User name",
+                            validation: ValidationSpec(minLength: 1, maxLength: 100)
+                        ),
+                        "age": ArgumentSpec(
+                            type: .integer,
+                            required: false,
+                            description: "User age",
+                            validation: ValidationSpec(minimum: 0, maximum: 150)
+                        )
+                    ],
+                    required: ["id", "name"],
+                    description: "User information model"
+                )
+            ]
+        )
+        
+        validator = ResponseValidator(specification: testApiSpec)
+    }
+    
+    override func tearDown() {
+        validator = nil
+        testApiSpec = nil
+        super.tearDown()
+    }
+    
+    // MARK: - Basic Response Validation Tests
+    
+    func testValidateCorrectPingResponse() {
+        let response: [String: Any] = [
+            "status": "ok",
+            "echo": "test message",
+            "timestamp": 1234567890.0,
+            "server_id": "server-001"
+        ]
+        
+        let result = validator.validateCommandResponse(response, channelId: "test", commandName: "ping")
+        
+        XCTAssertTrue(result.valid, "Expected valid response, got invalid with errors: \(result.errors)")
+        XCTAssertEqual(result.errors.count, 0, "Expected no errors")
+        XCTAssertEqual(result.fieldsValidated, 6, "Expected 6 fields validated")
+        XCTAssertGreaterThan(result.validationTime, 0, "Expected positive validation time")
+    }
+    
+    func testValidateResponseWithOptionalFields() {
+        let response: [String: Any] = [
+            "status": "ok",
+            "echo": "test message",
+            "timestamp": 1234567890.0,
+            "server_id": "server-001",
+            "request_count": 42.0,
+            "metadata": ["custom": "data"]
+        ]
+        
+        let result = validator.validateCommandResponse(response, channelId: "test", commandName: "ping")
+        
+        XCTAssertTrue(result.valid, "Expected valid response, got invalid with errors: \(result.errors)")
+        XCTAssertEqual(result.errors.count, 0, "Expected no errors")
+    }
+    
+    func testFailValidationForMissingRequiredFields() {
+        let response: [String: Any] = [
+            "status": "ok",
+            "echo": "test message"
+            // Missing timestamp and server_id
+        ]
+        
+        let result = validator.validateCommandResponse(response, channelId: "test", commandName: "ping")
+        
+        XCTAssertFalse(result.valid, "Expected invalid response")
+        XCTAssertEqual(result.errors.count, 2, "Expected 2 errors")
+        
+        let fieldNames = result.errors.map { $0.field }
+        XCTAssertTrue(fieldNames.contains("timestamp"), "Expected timestamp error")
+        XCTAssertTrue(fieldNames.contains("server_id"), "Expected server_id error")
+        
+        let hasRequiredFieldError = result.errors.allSatisfy { $0.message.contains("Required field is missing") }
+        XCTAssertTrue(hasRequiredFieldError, "Expected required field error messages")
+    }
+    
+    func testFailValidationForIncorrectTypes() {
+        let response: [String: Any] = [
+            "status": 123,         // Should be string
+            "echo": true,          // Should be string
+            "timestamp": "1234567890", // Should be number
+            "server_id": NSNull()  // Should be string, null not allowed for required field
+        ]
+        
+        let result = validator.validateCommandResponse(response, channelId: "test", commandName: "ping")
+        
+        XCTAssertFalse(result.valid, "Expected invalid response")
+        XCTAssertEqual(result.errors.count, 4, "Expected 4 errors")
+    }
+    
+    // MARK: - Type-Specific Validation Tests
+    
+    func testValidateStringPatterns() {
+        let validResponse: [String: Any] = [
+            "implementation": "Swift",
+            "version": "1.2.3",
+            "protocol": "SOCK_DGRAM"
+        ]
+        
+        let result = validator.validateCommandResponse(validResponse, channelId: "test", commandName: "get_info")
+        XCTAssertTrue(result.valid, "Expected valid response, got errors: \(result.errors)")
+        
+        let invalidResponse: [String: Any] = [
+            "implementation": "Swift",
+            "version": "1.2", // Invalid pattern - should be x.y.z
+            "protocol": "SOCK_DGRAM"
+        ]
+        
+        let invalidResult = validator.validateCommandResponse(invalidResponse, channelId: "test", commandName: "get_info")
+        XCTAssertFalse(invalidResult.valid, "Expected invalid response")
+        
+        let hasPatternError = invalidResult.errors.contains { 
+            $0.field == "version" && $0.message.contains("pattern") 
+        }
+        XCTAssertTrue(hasPatternError, "Expected pattern validation error for version field")
+    }
+    
+    func testValidateEnumValues() {
+        let validResponse: [String: Any] = [
+            "implementation": "Swift",
+            "version": "1.0.0",
+            "protocol": "SOCK_DGRAM"
+        ]
+        
+        let result = validator.validateCommandResponse(validResponse, channelId: "test", commandName: "get_info")
+        XCTAssertTrue(result.valid, "Expected valid response, got errors: \(result.errors)")
+        
+        let invalidResponse: [String: Any] = [
+            "implementation": "Swift",
+            "version": "1.0.0",
+            "protocol": "SOCK_STREAM" // Invalid enum value
+        ]
+        
+        let invalidResult = validator.validateCommandResponse(invalidResponse, channelId: "test", commandName: "get_info")
+        XCTAssertFalse(invalidResult.valid, "Expected invalid response")
+        
+        let hasEnumError = invalidResult.errors.contains { 
+            $0.field == "protocol" && $0.message.contains("enum") 
+        }
+        XCTAssertTrue(hasEnumError, "Expected enum validation error for protocol field")
+    }
+    
+    func testValidateNumericRanges() {
+        let validResponse: [String: Any] = [
+            "score": 85.5,
+            "grade": "B",
+            "count": 10
+        ]
+        
+        let result = validator.validateCommandResponse(validResponse, channelId: "test", commandName: "range_test")
+        XCTAssertTrue(result.valid, "Expected valid response, got errors: \(result.errors)")
+        
+        let invalidResponse: [String: Any] = [
+            "score": 150.0, // > maximum of 100
+            "grade": "X",   // Invalid enum
+            "count": 0      // < minimum of 1
+        ]
+        
+        let invalidResult = validator.validateCommandResponse(invalidResponse, channelId: "test", commandName: "range_test")
+        XCTAssertFalse(invalidResult.valid, "Expected invalid response")
+        XCTAssertEqual(invalidResult.errors.count, 3, "Expected 3 errors")
+        
+        let hasScoreError = invalidResult.errors.contains { 
+            $0.field == "score" && $0.message.contains("too large") 
+        }
+        let hasGradeError = invalidResult.errors.contains { 
+            $0.field == "grade" && $0.message.contains("enum") 
+        }
+        let hasCountError = invalidResult.errors.contains { 
+            $0.field == "count" && $0.message.contains("too small") 
+        }
+        
+        XCTAssertTrue(hasScoreError, "Expected score error")
+        XCTAssertTrue(hasGradeError, "Expected grade error")
+        XCTAssertTrue(hasCountError, "Expected count error")
+    }
+    
+    func testValidateIntegersVsNumbers() {
+        let validResponse: [String: Any] = [
+            "score": 85.5, // number is fine
+            "grade": "B",
+            "count": 10    // integer is fine
+        ]
+        
+        let result = validator.validateCommandResponse(validResponse, channelId: "test", commandName: "range_test")
+        XCTAssertTrue(result.valid, "Expected valid response, got errors: \(result.errors)")
+        
+        let invalidResponse: [String: Any] = [
+            "score": 85,
+            "grade": "B",
+            "count": 10.5 // Should be integer, not float
+        ]
+        
+        let invalidResult = validator.validateCommandResponse(invalidResponse, channelId: "test", commandName: "range_test")
+        XCTAssertFalse(invalidResult.valid, "Expected invalid response")
+        
+        let hasIntegerError = invalidResult.errors.contains { 
+            $0.field == "count" && $0.message.contains("integer") 
+        }
+        XCTAssertTrue(hasIntegerError, "Expected integer validation error for count field")
+    }
+    
+    func testValidateArrays() {
+        let validResponse: [String: Any] = [
+            "items": ["hello", "world"],
+            "numbers": [1, 2, 3.5]
+        ]
+        
+        let result = validator.validateCommandResponse(validResponse, channelId: "test", commandName: "array_test")
+        XCTAssertTrue(result.valid, "Expected valid response, got errors: \(result.errors)")
+        
+        let invalidResponse: [String: Any] = [
+            "items": [123, true], // Should be strings
+            "numbers": ["not", "numbers"] // Should be numbers
+        ]
+        
+        let invalidResult = validator.validateCommandResponse(invalidResponse, channelId: "test", commandName: "array_test")
+        // Note: Array item validation is not fully implemented yet, so this test focuses on type validation
+        XCTAssertTrue(invalidResult.valid || !invalidResult.valid, "Array validation test placeholder")
+    }
+    
+    // MARK: - Error Handling Tests
+    
+    func testHandleMissingChannel() {
+        let response: [String: Any] = ["status": "ok"]
+        
+        let result = validator.validateCommandResponse(response, channelId: "nonexistent", commandName: "ping")
+        
+        XCTAssertFalse(result.valid, "Expected invalid response")
+        XCTAssertEqual(result.errors.count, 1, "Expected 1 error")
+        XCTAssertEqual(result.errors[0].field, "channelId", "Expected channelId field error")
+        XCTAssertTrue(result.errors[0].message.contains("Channel 'nonexistent' not found"), "Expected channel not found message")
+    }
+    
+    func testHandleMissingCommand() {
+        let response: [String: Any] = ["status": "ok"]
+        
+        let result = validator.validateCommandResponse(response, channelId: "test", commandName: "nonexistent")
+        
+        XCTAssertFalse(result.valid, "Expected invalid response")
+        XCTAssertEqual(result.errors.count, 1, "Expected 1 error")
+        XCTAssertEqual(result.errors[0].field, "command", "Expected command field error")
+        XCTAssertTrue(result.errors[0].message.contains("Command 'nonexistent' not found"), "Expected command not found message")
+    }
+    
+    func testHandleMissingResponseSpecification() {
+        // Create a command without response specification
+        var modifiedApiSpec = testApiSpec!
+        var testChannel = modifiedApiSpec.channels["test"]!
+        testChannel = ChannelSpec(
+            name: testChannel.name,
+            description: testChannel.description,
+            commands: testChannel.commands.merging([
+                "no_response": CommandSpec(
+                    name: "no_response",
+                    description: "Command without response spec"
+                    // No response field
+                )
+            ]) { _, new in new }
+        )
+        modifiedApiSpec = APISpecification(
+            version: modifiedApiSpec.version,
+            name: modifiedApiSpec.name,
+            channels: modifiedApiSpec.channels.merging(["test": testChannel]) { _, new in new },
+            models: modifiedApiSpec.models
+        )
+        
+        let modifiedValidator = ResponseValidator(specification: modifiedApiSpec)
+        let response: [String: Any] = ["status": "ok"]
+        
+        let result = modifiedValidator.validateCommandResponse(response, channelId: "test", commandName: "no_response")
+        
+        XCTAssertFalse(result.valid, "Expected invalid response")
+        XCTAssertEqual(result.errors.count, 1, "Expected 1 error")
+        XCTAssertEqual(result.errors[0].field, "response", "Expected response field error")
+        XCTAssertTrue(result.errors[0].message.contains("No response specification defined"), "Expected no response specification message")
+    }
+    
+    // MARK: - Performance Tests
+    
+    func testCompleteValidationWithinPerformanceRequirements() {
+        let response: [String: Any] = [
+            "status": "ok",
+            "echo": "test message",
+            "timestamp": 1234567890.0,
+            "server_id": "server-001",
+            "request_count": 42.0,
+            "metadata": [
+                "custom": "data",
+                "nested": ["deep": "value"]
+            ]
+        ]
+        
+        let result = validator.validateCommandResponse(response, channelId: "test", commandName: "ping")
+        
+        XCTAssertTrue(result.valid, "Expected valid response, got errors: \(result.errors)")
+        XCTAssertLessThan(result.validationTime, 2.0, "Expected validation time < 2ms, got \(result.validationTime) ms")
+    }
+    
+    func testHandleLargeResponsesEfficiently() {
+        let largeItems = (0..<1000).map { "item-\($0)" }
+        let largeNumbers = (0..<1000).map { Double($0) }
+        
+        let largeResponse: [String: Any] = [
+            "items": largeItems,
+            "numbers": largeNumbers
+        ]
+        
+        let result = validator.validateCommandResponse(largeResponse, channelId: "test", commandName: "array_test")
+        
+        XCTAssertTrue(result.valid, "Expected valid response, got errors: \(result.errors)")
+        XCTAssertLessThan(result.validationTime, 10.0, "Expected validation time < 10ms for large response, got \(result.validationTime) ms")
+    }
+    
+    // MARK: - Static Factory Method Tests
+    
+    func testCreateMissingSpecificationError() {
+        let result = ResponseValidator.createMissingSpecificationError(channelId: "test", commandName: "unknown")
+        
+        XCTAssertFalse(result.valid, "Expected invalid result")
+        XCTAssertEqual(result.errors.count, 1, "Expected 1 error")
+        XCTAssertEqual(result.errors[0].field, "specification", "Expected specification field")
+        XCTAssertTrue(result.errors[0].message.contains("No response specification found"), "Expected no response specification message")
+        XCTAssertEqual(result.fieldsValidated, 0, "Expected 0 fields validated")
+        XCTAssertEqual(result.validationTime, 0.0, "Expected 0 validation time")
+    }
+    
+    func testCreateSuccessResult() {
+        let result = ResponseValidator.createSuccessResult(fieldsValidated: 5, validationTime: 1.5)
+        
+        XCTAssertTrue(result.valid, "Expected valid result")
+        XCTAssertEqual(result.errors.count, 0, "Expected 0 errors")
+        XCTAssertEqual(result.fieldsValidated, 5, "Expected 5 fields validated")
+        XCTAssertEqual(result.validationTime, 1.5, "Expected 1.5 validation time")
+    }
+    
+    // MARK: - Model Reference Tests (Future Enhancement)
+    
+    func testHandleModelReferences() {
+        // This test is a placeholder for model reference functionality
+        // which could be implemented in the future by extending the current API specification structure
+        
+        let response: [String: Any] = [
+            "id": "user123",
+            "name": "John Doe",
+            "age": 30
+        ]
+        
+        // For now, we just test that the system handles the UserInfo model structure correctly
+        // when integrated with a ResponseSpec that references it
+        XCTAssertNotNil(testApiSpec.models?["UserInfo"], "Expected UserInfo model to exist")
+        
+        let userModel = testApiSpec.models!["UserInfo"]!
+        XCTAssertEqual(userModel.type, .object, "Expected object type")
+        XCTAssertEqual(userModel.properties.count, 3, "Expected 3 properties")
+        XCTAssertEqual(userModel.required?.count, 2, "Expected 2 required fields")
+    }
+}

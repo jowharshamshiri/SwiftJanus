@@ -26,7 +26,7 @@ struct SwiftJanusClient {
         let apiSpec = try parser.parseJSON(specData)
         
         // Create SOCK_DGRAM client
-        let client = JanusDatagramClient(
+        let client = JanusClient(
             socketPath: socketPath,
             channelId: "test",
             apiSpec: apiSpec,

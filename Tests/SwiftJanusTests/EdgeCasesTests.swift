@@ -203,7 +203,7 @@ final class EdgeCasesTests: XCTestCase {
         // Should validate successfully
         try APISpecificationParser.validate(apiSpec)
         
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: apiSpec
@@ -282,7 +282,7 @@ final class EdgeCasesTests: XCTestCase {
         // Should validate successfully
         try APISpecificationParser.validate(apiSpec)
         
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "channel-with-dashes",
             apiSpec: apiSpec
@@ -296,7 +296,7 @@ final class EdgeCasesTests: XCTestCase {
         
         // Create multiple clients concurrently
         let clients = try (0..<10).map { i in
-            try JanusDatagramClient(
+            try JanusClient(
                 socketPath: "\(testSocketPath!)-\(i)",
                 channelId: "testChannel",
                 apiSpec: apiSpec
@@ -315,7 +315,7 @@ final class EdgeCasesTests: XCTestCase {
         let longPath = "/tmp/" + String(repeating: "a", count: 100) + ".sock"
         
         do {
-            let client = try JanusDatagramClient(
+            let client = try JanusClient(
                 socketPath: longPath,
                 channelId: "testChannel",
                 apiSpec: apiSpec
@@ -330,7 +330,7 @@ final class EdgeCasesTests: XCTestCase {
         let specialPath = "/tmp/socket-with-special-chars_123.sock"
         
         do {
-            let client = try JanusDatagramClient(
+            let client = try JanusClient(
                 socketPath: specialPath,
                 channelId: "testChannel",
                 apiSpec: apiSpec

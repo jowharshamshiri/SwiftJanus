@@ -23,8 +23,8 @@ final class HighLevelAPITests: XCTestCase {
         try? FileManager.default.removeItem(atPath: testSocketPath)
     }
     
-    func testDatagramClientCreation() throws {
-        let client = try JanusDatagramClient(
+    func testJanusClientCreation() throws {
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -32,8 +32,8 @@ final class HighLevelAPITests: XCTestCase {
         XCTAssertNotNil(client)
     }
     
-    func testDatagramCommandValidation() async throws {
-        let client = try JanusDatagramClient(
+    func testJanusCommandValidation() async throws {
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -52,7 +52,7 @@ final class HighLevelAPITests: XCTestCase {
     }
     
     func testDatagramInvalidCommand() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -74,7 +74,7 @@ final class HighLevelAPITests: XCTestCase {
     }
     
     func testDatagramArgumentValidation() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec

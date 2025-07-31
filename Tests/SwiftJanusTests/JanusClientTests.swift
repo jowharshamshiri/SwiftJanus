@@ -26,7 +26,7 @@ final class JanusClientTests: XCTestCase {
     }
     
     func testClientInitializationWithValidSpec() throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -37,7 +37,7 @@ final class JanusClientTests: XCTestCase {
     
     func testClientInitializationWithInvalidChannel() {
         XCTAssertThrowsError(
-            try JanusDatagramClient(
+            try JanusClient(
                 socketPath: testSocketPath,
                 channelId: "nonExistentChannel",
                 apiSpec: testAPISpec
@@ -57,7 +57,7 @@ final class JanusClientTests: XCTestCase {
         )
         
         XCTAssertThrowsError(
-            try JanusDatagramClient(
+            try JanusClient(
                 socketPath: testSocketPath,
                 channelId: "testChannel",
                 apiSpec: invalidSpec
@@ -70,7 +70,7 @@ final class JanusClientTests: XCTestCase {
     }
     
     func testRegisterValidCommandHandler() throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -81,7 +81,7 @@ final class JanusClientTests: XCTestCase {
     }
     
     func testRegisterInvalidCommandHandler() throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -93,7 +93,7 @@ final class JanusClientTests: XCTestCase {
     }
     
     func testSocketCommandValidation() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -133,7 +133,7 @@ final class JanusClientTests: XCTestCase {
     }
     
     func testCommandMessageSerialization() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -159,13 +159,13 @@ final class JanusClientTests: XCTestCase {
     }
     
     func testMultipleClientInstances() throws {
-        let client1 = try JanusDatagramClient(
+        let client1 = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
         )
         
-        let client2 = try JanusDatagramClient(
+        let client2 = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -180,7 +180,7 @@ final class JanusClientTests: XCTestCase {
     }
     
     func testCommandHandlerWithAsyncOperations() throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -194,7 +194,7 @@ final class JanusClientTests: XCTestCase {
     }
     
     func testCommandHandlerErrorHandling() throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -209,7 +209,7 @@ final class JanusClientTests: XCTestCase {
     func testAPISpecWithComplexArguments() throws {
         let complexSpec = createComplexAPISpec()
         
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "complexChannel",
             apiSpec: complexSpec
@@ -223,7 +223,7 @@ final class JanusClientTests: XCTestCase {
     func testArgumentValidationConstraints() throws {
         let spec = createSpecWithValidation()
         
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "validationChannel",
             apiSpec: spec

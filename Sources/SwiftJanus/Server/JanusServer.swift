@@ -1,21 +1,23 @@
 import Foundation
 
 /// Command handler function type for SOCK_DGRAM server
-public typealias DatagramCommandHandler = (SocketCommand) -> Result<[String: AnyCodable], JanusError>
+public typealias JanusCommandHandler = (SocketCommand) -> Result<[String: AnyCodable], JanusError>
 
 /// High-level SOCK_DGRAM Unix socket server
 /// Extracted from SwiftJanusDgram main binary and made reusable
-public class UnixDatagramServer {
-    private var handlers: [String: DatagramCommandHandler] = [:]
+public class JanusServer {
+    private var handlers: [String: JanusCommandHandler] = [:]
     private var isRunning = false
+    private let apiSpecification: APISpecification?
     
-    public init() {
+    public init(apiSpecification: APISpecification? = nil) {
+        self.apiSpecification = apiSpecification
         // Register default commands that match other implementations
         registerDefaultHandlers()
     }
     
     /// Register a command handler
-    public func registerHandler(_ command: String, handler: @escaping DatagramCommandHandler) {
+    public func registerHandler(_ command: String, handler: @escaping JanusCommandHandler) {
         handlers[command] = handler
     }
     
@@ -167,6 +169,22 @@ public class UnixDatagramServer {
             default:
                 success = false
                 result["error"] = AnyCodable("Unknown command: \(command)")
+            }
+        }
+        
+        // Validate response against API specification if available
+        if let apiSpec = self.apiSpecification, !result.isEmpty {
+            let validator = ResponseValidator(specification: apiSpec)
+            // Convert AnyCodable result to [String: Any] for validation
+            let resultDict = result.mapValues { $0.value }
+            let validationResult = validator.validateCommandResponse(
+                resultDict,
+                channelId: channelId,
+                commandName: command
+            )
+            if !validationResult.valid {
+                // Log validation errors but don't fail the response
+                print("Response validation failed for \(command): \(validationResult.errors.map { $0.localizedDescription }.joined(separator: ", "))")
             }
         }
         

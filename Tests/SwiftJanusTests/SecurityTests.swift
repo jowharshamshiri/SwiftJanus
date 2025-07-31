@@ -63,7 +63,7 @@ final class SecurityTests: XCTestCase {
         
         for maliciousPath in maliciousPaths {
             XCTAssertThrowsError(
-                try JanusDatagramClient(
+                try JanusClient(
                     socketPath: maliciousPath,
                     channelId: "testChannel",
                     apiSpec: testAPISpec
@@ -86,7 +86,7 @@ final class SecurityTests: XCTestCase {
         
         for invalidPath in nullBytePaths {
             XCTAssertThrowsError(
-                try JanusDatagramClient(
+                try JanusClient(
                     socketPath: invalidPath,
                     channelId: "testChannel",
                     apiSpec: testAPISpec
@@ -106,7 +106,7 @@ final class SecurityTests: XCTestCase {
         // This might throw due to system limits rather than our validation
         // The important thing is that it doesn't crash or cause undefined behavior
         do {
-            _ = try JanusDatagramClient(
+            _ = try JanusClient(
                 socketPath: longPath,
                 channelId: "testChannel",
                 apiSpec: testAPISpec
@@ -135,7 +135,7 @@ final class SecurityTests: XCTestCase {
         
         for maliciousId in maliciousChannelIds {
             XCTAssertThrowsError(
-                try JanusDatagramClient(
+                try JanusClient(
                     socketPath: testSocketPath,
                     channelId: maliciousId,
                     apiSpec: testAPISpec
@@ -148,7 +148,7 @@ final class SecurityTests: XCTestCase {
     }
     
     func testCommandInjectionInArguments() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -191,7 +191,7 @@ final class SecurityTests: XCTestCase {
     // MARK: - JSON/Protocol Attack Tests
     
     func testMalformedJSONAttacks() throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel", 
             apiSpec: testAPISpec
@@ -230,7 +230,7 @@ final class SecurityTests: XCTestCase {
     }
     
     func testUnicodeNormalizationAttacks() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -265,7 +265,7 @@ final class SecurityTests: XCTestCase {
     // MARK: - Memory Exhaustion Attack Tests
     
     func testLargePayloadAttacks() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -303,7 +303,7 @@ final class SecurityTests: XCTestCase {
     }
     
     func testRepeatedLargePayloadAttacks() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -330,7 +330,7 @@ final class SecurityTests: XCTestCase {
     
     func testConnectionPoolExhaustion() async throws {
         // SOCK_DGRAM doesn't use connection pools - each operation is independent
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel", 
             apiSpec: testAPISpec
@@ -356,7 +356,7 @@ final class SecurityTests: XCTestCase {
     }
     
     func testRapidConnectionAttempts() async throws {
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -384,7 +384,7 @@ final class SecurityTests: XCTestCase {
     func testInsecureConfigurationPrevention() throws {
         // Test that the library can be configured with reasonable defaults
         // SOCK_DGRAM uses internal default configuration
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
@@ -399,7 +399,7 @@ final class SecurityTests: XCTestCase {
         // Test extreme but potentially valid configuration values
         // SOCK_DGRAM handles extreme values internally with built-in limits
         do {
-            _ = try JanusDatagramClient(
+            _ = try JanusClient(
                 socketPath: testSocketPath,
                 channelId: "testChannel",
                 apiSpec: testAPISpec
@@ -414,7 +414,7 @@ final class SecurityTests: XCTestCase {
     
     func testValidationBypassAttempts() throws {
         // Test attempts to bypass argument validation
-        let client = try JanusDatagramClient(
+        let client = try JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel",
             apiSpec: testAPISpec
