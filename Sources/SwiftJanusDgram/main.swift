@@ -34,10 +34,28 @@ struct JanusDgram: AsyncParsableCommand {
     @Option(name: .long, help: "API specification file (required for validation)")
     var spec: String?
     
+    // API Specification storage
+    private var apiSpecification: APISpecification?
+    
     @Option(name: .long, help: "Channel ID for command routing")
     var channel: String = "test"
     
-    func run() async throws {
+    mutating func run() async throws {
+        // Load API specification if provided
+        if let specPath = spec {
+            do {
+                let specURL = URL(fileURLWithPath: specPath)
+                let specData = try Data(contentsOf: specURL)
+                let parser = APISpecificationParser()
+                apiSpecification = try parser.parseJSON(specData)
+                print("✅ Loaded API specification from: \(specPath)")
+            } catch {
+                print("❌ Failed to load API specification from \(specPath): \(error)")
+                JanusDgram.exit(withError: ExitCode.failure)
+                return
+            }
+        }
+        
         if listen {
             try listenForDatagrams()
         } else if let target = sendTo {
@@ -127,7 +145,7 @@ struct JanusDgram: AsyncParsableCommand {
         print("Sending SOCK_DGRAM to: \(target)")
         
         do {
-            let client = try JanusClient(socketPath: target, channelId: "swift-client")
+            let client = try await JanusClient(socketPath: target, channelId: "swift-client")
             
             let args: [String: AnyCodable] = ["message": AnyCodable(message)]
             
@@ -150,13 +168,58 @@ struct JanusDgram: AsyncParsableCommand {
     func sendResponse(commandId: String, channelId: String, command: String, args: [String: AnyCodable]?, replyTo: String) {
         var result: [String: AnyCodable] = [:]
         var success = true
+        var errorObj: SocketError?
         
-        switch command {
+        // Built-in commands are always allowed and hardcoded (matches Go implementation exactly)
+        let builtInCommands: Set<String> = ["spec", "ping", "echo", "get_info", "validate", "slow_process"]
+        
+        // Add arguments based on command type (matches Go/Rust implementation)
+        var enhancedArgs = args ?? [:]
+        if ["echo", "get_info", "validate", "slow_process"].contains(command) {
+            // These commands need a "message" argument - add default if not present
+            if enhancedArgs["message"] == nil {
+                enhancedArgs["message"] = AnyCodable("test message")
+            }
+        }
+        // spec and ping commands don't need message arguments
+        
+        // Validate command against API specification if provided
+        // Built-in commands bypass API spec validation
+        if let apiSpec = apiSpecification, !builtInCommands.contains(command) {
+            // Check if command exists in the channel
+            if let channel = apiSpec.channels[channelId],
+               let _ = channel.commands[command] {
+                // Command exists, validate arguments
+                do {
+                    let commandSpec = channel.commands[command]!
+                    if let specArgs = commandSpec.args {
+                        try validateCommandArgs(args: enhancedArgs, againstSpec: specArgs)
+                    }
+                } catch {
+                    success = false
+                    errorObj = SocketError(
+                        code: "VALIDATION_ERROR",
+                        message: "Command validation failed: \(error.localizedDescription)"
+                    )
+                }
+            } else {
+                // Command not found in API spec
+                success = false
+                errorObj = SocketError(
+                    code: "UNKNOWN_COMMAND",
+                    message: "Command '\(command)' not found in channel '\(channelId)'"
+                )
+            }
+        }
+        
+        // Only process command if validation passed (matches Go logic exactly)
+        if success {
+            switch command {
         case "ping":
             result["pong"] = AnyCodable(true)
-            result["echo"] = AnyCodable(args)
+            result["echo"] = AnyCodable(enhancedArgs)
         case "echo":
-            if let message = args?["message"] {
+            if let message = enhancedArgs["message"] {
                 result["message"] = message
             }
         case "get_info":
@@ -165,7 +228,7 @@ struct JanusDgram: AsyncParsableCommand {
             result["protocol"] = AnyCodable("SOCK_DGRAM")
         case "validate":
             // Validate JSON payload
-            if let message = args?["message"],
+            if let message = enhancedArgs["message"],
                let messageString = message.value as? String {
                 do {
                     let jsonData = try JSONSerialization.jsonObject(with: messageString.data(using: .utf8)!, options: [])
@@ -185,12 +248,22 @@ struct JanusDgram: AsyncParsableCommand {
             Thread.sleep(forTimeInterval: 2.0) // 2 second delay
             result["processed"] = AnyCodable(true)
             result["delay"] = AnyCodable("2000ms")
-            if let message = args?["message"] {
+            if let message = enhancedArgs["message"] {
                 result["message"] = message
             }
-        default:
-            success = false
-            result["error"] = AnyCodable("Unknown command: \(command)")
+        case "spec":
+            // Return loaded API specification
+            if let apiSpec = apiSpecification {
+                // Directly encode the API specification - AnyCodable will handle Codable types
+                result["specification"] = AnyCodable(apiSpec)
+            } else {
+                success = false
+                result["error"] = AnyCodable("No API specification loaded. Use --spec argument to load specification file")
+            }
+            default:
+                success = false
+                result["error"] = AnyCodable("Unknown command: \(command)")
+            }
         }
         
         // Note: ResponseValidator integration would require API specification loading
@@ -201,7 +274,7 @@ struct JanusDgram: AsyncParsableCommand {
             channelId: channelId,
             success: success,
             result: result.isEmpty ? nil : result,
-            error: success ? nil : SocketError(code: "UNKNOWN_COMMAND", message: "Unknown command", details: nil),
+            error: errorObj ?? (success ? nil : SocketError(code: "UNKNOWN_COMMAND", message: "Unknown command", details: nil)),
             timestamp: Date().timeIntervalSince1970
         )
         
@@ -243,6 +316,63 @@ struct JanusDgram: AsyncParsableCommand {
             }
         } catch {
             print("Failed to send response: \(error)")
+        }
+    }
+    
+    /// Validate command arguments against API specification (matches Go implementation)
+    private func validateCommandArgs(args: [String: AnyCodable]?, againstSpec specArgs: [String: ArgumentSpec]) throws {
+        // Check for required arguments
+        for (argName, argSpec) in specArgs {
+            if argSpec.required && (args?[argName] == nil) {
+                throw JanusError.missingRequiredArgument("Required argument '\(argName)' is missing")
+            }
+        }
+        
+        // Validate argument types and values
+        if let args = args {
+            for (argName, argValue) in args {
+                if let argSpec = specArgs[argName] {
+                    try validateArgumentValue(name: argName, value: argValue, spec: argSpec)
+                }
+                // Note: Extra arguments not in spec are allowed for flexibility
+            }
+        }
+    }
+    
+    /// Validate individual argument value against its specification
+    private func validateArgumentValue(name: String, value: AnyCodable, spec: ArgumentSpec) throws {
+        // Type validation based on spec
+        switch spec.type {
+        case .string:
+            guard value.value is String else {
+                throw JanusError.invalidArgument(name, "must be a string")
+            }
+        case .number:
+            guard value.value is Double || value.value is Float || value.value is Int else {
+                throw JanusError.invalidArgument(name, "must be a number")
+            }
+        case .integer:
+            guard value.value is Int else {
+                throw JanusError.invalidArgument(name, "must be an integer")
+            }
+        case .boolean:
+            guard value.value is Bool else {
+                throw JanusError.invalidArgument(name, "must be a boolean")
+            }
+        case .array:
+            guard value.value is Array<Any> else {
+                throw JanusError.invalidArgument(name, "must be an array")
+            }
+        case .object:
+            guard value.value is Dictionary<String, Any> else {
+                throw JanusError.invalidArgument(name, "must be an object")
+            }
+        case .null:
+            // Null values are always acceptable
+            break
+        case .reference:
+            // Reference validation would require model registry - skip for now
+            break
         }
     }
 }

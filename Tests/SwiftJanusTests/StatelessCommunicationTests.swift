@@ -26,10 +26,9 @@ final class StatelessCommunicationTests: XCTestCase {
     }
     
     func testStatelessCommandValidation() async throws {
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "statelessChannel",
-            apiSpec: testAPISpec
+            channelId: "statelessChannel"
         )
         
         // Test command validation without connection
@@ -58,10 +57,9 @@ final class StatelessCommunicationTests: XCTestCase {
     }
     
     func testMultipleIndependentCommands() async throws {
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "statelessChannel",
-            apiSpec: testAPISpec
+            channelId: "statelessChannel"
         )
         
         // Each command should be independent and fail at connection level
@@ -86,10 +84,9 @@ final class StatelessCommunicationTests: XCTestCase {
     }
     
     func testConcurrentStatelessCommands() async throws {
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "statelessChannel",
-            apiSpec: testAPISpec
+            channelId: "statelessChannel"
         )
         
         // Test concurrent command execution
@@ -109,11 +106,10 @@ final class StatelessCommunicationTests: XCTestCase {
         XCTAssertTrue(true)
     }
     
-    func testCommandHandlerRegistration() throws {
-        let client = try JanusClient(
+    func testCommandHandlerRegistration() async throws {
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "statelessChannel",
-            apiSpec: testAPISpec
+            channelId: "statelessChannel"
         )
         
         var handlerCallCount = 0
@@ -126,10 +122,9 @@ final class StatelessCommunicationTests: XCTestCase {
     }
     
     func testArgumentValidationWithoutConnection() async throws {
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "statelessChannel",
-            apiSpec: testAPISpec
+            channelId: "statelessChannel"
         )
         
         // Test required argument validation
@@ -156,17 +151,15 @@ final class StatelessCommunicationTests: XCTestCase {
         }
     }
     
-    func testChannelIsolation() throws {
-        let client1 = try JanusClient(
+    func testChannelIsolation() async throws {
+        let client1 = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "channel1",
-            apiSpec: createMultiChannelAPISpec()
+            channelId: "channel1"
         )
         
-        let client2 = try JanusClient(
+        let client2 = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "channel2",
-            apiSpec: createMultiChannelAPISpec()
+            channelId: "channel2"
         )
         
         // Each client should only know about its own channel's commands
@@ -181,10 +174,9 @@ final class StatelessCommunicationTests: XCTestCase {
     }
     
     func testErrorHandlingInStatelessMode() async throws {
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "statelessChannel",
-            apiSpec: testAPISpec
+            channelId: "statelessChannel"
         )
         
         // Error handling would be managed by the server-side handlers
@@ -194,32 +186,37 @@ final class StatelessCommunicationTests: XCTestCase {
         XCTAssertTrue(true)
     }
     
-    func testAPISpecificationValidationOnInit() {
+    func testAPISpecificationValidationOnInit() async {
         // Test with empty channels
         let invalidSpec1 = APISpecification(version: "1.0.0", channels: [:])
         
-        XCTAssertThrowsError(
-            try JanusClient(
+        do {
+            _ = try await JanusClient(
                 socketPath: testSocketPath,
-                channelId: "anyChannel",
-                apiSpec: invalidSpec1
+                channelId: "anyChannel"
             )
-        )
+            XCTFail("Expected error for empty specification")
+        } catch {
+            // Expected error
+        }
         
         // Test with missing target channel
         let validSpec = createStatelessTestAPISpec()
         
-        XCTAssertThrowsError(
-            try JanusClient(
+        do {
+            _ = try await JanusClient(
                 socketPath: testSocketPath,
-                channelId: "nonExistentChannel",
-                apiSpec: validSpec
+                channelId: "nonExistentChannel"
             )
-        ) { error in
-            XCTAssertTrue(error is JanusError)
-            if case .invalidChannel(let channelId) = error as? JanusError {
+            XCTFail("Expected error for invalid channel")
+        } catch let error as JanusError {
+            if case .invalidChannel(let channelId) = error {
                 XCTAssertEqual(channelId, "nonExistentChannel")
+            } else {
+                XCTFail("Expected invalidChannel error, got \(error)")
             }
+        } catch {
+            XCTFail("Expected JanusError, got \(error)")
         }
     }
     

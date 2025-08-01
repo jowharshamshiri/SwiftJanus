@@ -318,12 +318,7 @@ final class APISpecificationParserTests: XCTestCase {
                 type: .object,
                 description: "Valid response"
             ),
-            errorCodes: [
-                "badRequest": ErrorSpec(
-                    code: 400,
-                    message: "Bad Request"
-                )
-            ]
+            errorCodes: ["badRequest"]
         )
         
         let channelSpec = ChannelSpec(

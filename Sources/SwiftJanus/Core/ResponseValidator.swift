@@ -202,7 +202,22 @@ public class ResponseValidator {
                 // Boolean and null validation is covered by type validation
                 break
             case .reference:
-                // Model reference validation - for future expansion
+                // Handle model references
+                if let modelRef = getModelReference(spec) {
+                    if let model = resolveModelReference(modelRef) {
+                        // Convert ModelSpec to SpecType for validation
+                        if let modelAsSpec = model as? SpecType {
+                            validateValue(value, spec: modelAsSpec, fieldPath: fieldPath, errors: &errors)
+                        }
+                    } else {
+                        errors.append(ValidationError(
+                            field: fieldPath,
+                            message: "Model reference '\(modelRef)' not found",
+                            expected: "valid model reference",
+                            actual: AnyCodable(modelRef)
+                        ))
+                    }
+                }
                 break
             }
         }
@@ -346,9 +361,18 @@ public class ResponseValidator {
     }
     
     private func validateArray(_ value: [Any], spec: SpecType, fieldPath: String, errors: inout [ValidationError]) {
-        // Array item validation would need to be added to the Swift specification structure
-        // For now, basic array validation is handled by type checking
-        // This could be extended when array item specifications are added to the Swift model
+        // Get items specification for array item validation
+        let itemSpec = getArrayItemSpec(spec)
+        
+        guard let itemSpec = itemSpec else {
+            return // No item specification, skip item validation
+        }
+        
+        // Validate each array item
+        for (index, item) in value.enumerated() {
+            let itemFieldPath = "\(fieldPath)[\(index)]"
+            validateValue(item, spec: itemSpec, fieldPath: itemFieldPath, errors: &errors)
+        }
     }
     
     private func validateObject(_ value: [String: Any], spec: SpecType, fieldPath: String, errors: inout [ValidationError]) {
@@ -458,6 +482,22 @@ public class ResponseValidator {
             validationTime: validationTime,
             fieldsValidated: fieldsValidated
         )
+    }
+    
+    // MARK: - Model Reference Resolution
+    
+    /// Get model reference from a spec
+    private func getModelReference(_ spec: SpecType) -> String? {
+        // For now, return nil as Swift specs don't currently have model references
+        // This would need to be implemented when model references are added to Swift specifications
+        return nil
+    }
+    
+    /// Get array item specification
+    private func getArrayItemSpec(_ spec: SpecType) -> SpecType? {
+        // For now, return nil as Swift specs don't currently have items specifications
+        // This would need to be implemented when array item specs are added to Swift specifications
+        return nil
     }
 }
 

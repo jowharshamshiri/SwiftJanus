@@ -203,10 +203,9 @@ final class EdgeCasesTests: XCTestCase {
         // Should validate successfully
         try APISpecificationParser.validate(apiSpec)
         
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel",
-            apiSpec: apiSpec
+            channelId: "testChannel"
         )
         
         // Should be able to call command with no args
@@ -250,7 +249,7 @@ final class EdgeCasesTests: XCTestCase {
         XCTAssertNotNil(decodedCommand.args)
     }
     
-    func testSpecialCharactersInChannelAndCommandNames() throws {
+    func testSpecialCharactersInChannelAndCommandNames() async throws {
         let commandSpec = CommandSpec(
             description: "Command with special chars",
             args: [:],
@@ -282,25 +281,24 @@ final class EdgeCasesTests: XCTestCase {
         // Should validate successfully
         try APISpecificationParser.validate(apiSpec)
         
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "channel-with-dashes",
-            apiSpec: apiSpec
+            channelId: "channel-with-dashes"
         )
         
         // Client should validate command names at send time, not registration time
     }
     
-    func testConcurrentClientCreation() throws {
-        let apiSpec = createSimpleAPISpec()
-        
+    func testConcurrentClientCreation() async throws {
         // Create multiple clients concurrently
-        let clients = try (0..<10).map { i in
-            try JanusClient(
+        var clients: [JanusClient] = []
+        
+        for i in 0..<10 {
+            let client = try await JanusClient(
                 socketPath: "\(testSocketPath!)-\(i)",
-                channelId: "testChannel",
-                apiSpec: apiSpec
+                channelId: "testChannel"
             )
+            clients.append(client)
         }
         
         XCTAssertEqual(clients.count, 10)
@@ -308,17 +306,14 @@ final class EdgeCasesTests: XCTestCase {
         // All clients should be independent - handlers would be server-side
     }
     
-    func testSocketPathEdgeCases() {
-        let apiSpec = createSimpleAPISpec()
-        
+    func testSocketPathEdgeCases() async {
         // Test with very long socket path
         let longPath = "/tmp/" + String(repeating: "a", count: 100) + ".sock"
         
         do {
-            let client = try JanusClient(
+            let client = try await JanusClient(
                 socketPath: longPath,
-                channelId: "testChannel",
-                apiSpec: apiSpec
+                channelId: "testChannel"
             )
             XCTAssertNotNil(client)
         } catch {
@@ -330,10 +325,9 @@ final class EdgeCasesTests: XCTestCase {
         let specialPath = "/tmp/socket-with-special-chars_123.sock"
         
         do {
-            let client = try JanusClient(
+            let client = try await JanusClient(
                 socketPath: specialPath,
-                channelId: "testChannel",
-                apiSpec: apiSpec
+                channelId: "testChannel"
             )
             XCTAssertNotNil(client)
         } catch {

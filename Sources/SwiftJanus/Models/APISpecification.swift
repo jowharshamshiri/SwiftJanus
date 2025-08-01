@@ -37,14 +37,14 @@ public struct CommandSpec: Codable, Sendable {
     public let description: String?
     public let args: [String: ArgumentSpec]?
     public let response: ResponseSpec?
-    public let errorCodes: [String: ErrorSpec]?
+    public let errorCodes: [String]?
     
     public init(
         name: String? = nil,
         description: String? = nil,
         args: [String: ArgumentSpec]? = nil,
         response: ResponseSpec? = nil,
-        errorCodes: [String: ErrorSpec]? = nil
+        errorCodes: [String]? = nil
     ) {
         self.name = name
         self.description = description
@@ -57,10 +57,23 @@ public struct CommandSpec: Codable, Sendable {
 /// Specification for command arguments
 public struct ArgumentSpec: Codable, Sendable {
     public let type: ArgumentType
-    public let required: Bool
+    private let _required: Bool?
     public let description: String?
     public let defaultValue: AnyCodable?
     public let validation: ValidationSpec?
+    
+    // Computed property that defaults to false like Go
+    public var required: Bool {
+        return _required ?? false
+    }
+    
+    private enum CodingKeys: String, CodingKey {
+        case type
+        case _required = "required"
+        case description
+        case defaultValue
+        case validation
+    }
     
     public init(
         type: ArgumentType,
@@ -70,7 +83,7 @@ public struct ArgumentSpec: Codable, Sendable {
         validation: ValidationSpec? = nil
     ) {
         self.type = type
-        self.required = required
+        self._required = required
         self.description = description
         self.defaultValue = defaultValue
         self.validation = validation

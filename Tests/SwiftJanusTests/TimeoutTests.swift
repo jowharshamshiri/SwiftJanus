@@ -26,10 +26,9 @@ final class TimeoutTests: XCTestCase {
     }
     
     func testCommandWithTimeout() async throws {
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "timeoutChannel",
-            apiSpec: testAPISpec
+            channelId: "timeoutChannel"
         )
         
         // Timeout functionality is handled internally by the client
@@ -69,10 +68,9 @@ final class TimeoutTests: XCTestCase {
     }
     
     func testCommandTimeoutErrorMessage() async throws {
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "timeoutChannel",
-            apiSpec: testAPISpec
+            channelId: "timeoutChannel"
         )
         
         do {
@@ -100,10 +98,9 @@ final class TimeoutTests: XCTestCase {
     }
     
     func testUUIDGeneration() async throws {
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "timeoutChannel",
-            apiSpec: testAPISpec
+            channelId: "timeoutChannel"
         )
         
         // Test that publish command returns UUID
@@ -125,10 +122,9 @@ final class TimeoutTests: XCTestCase {
     }
     
     func testMultipleCommandsWithDifferentTimeouts() async throws {
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "timeoutChannel",
-            apiSpec: testAPISpec
+            channelId: "timeoutChannel"
         )
         
         let timeouts: [TimeInterval] = [0.05, 0.1, 0.15]
@@ -197,10 +193,9 @@ final class TimeoutTests: XCTestCase {
     }
     
     func testDefaultTimeout() async throws {
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "timeoutChannel",
-            apiSpec: testAPISpec
+            channelId: "timeoutChannel"
         )
         
         // Test command with default timeout (should be 30 seconds)
@@ -220,10 +215,9 @@ final class TimeoutTests: XCTestCase {
     }
     
     func testConcurrentTimeouts() async throws {
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "timeoutChannel",
-            apiSpec: testAPISpec
+            channelId: "timeoutChannel"
         )
         
         let commandCount = 5

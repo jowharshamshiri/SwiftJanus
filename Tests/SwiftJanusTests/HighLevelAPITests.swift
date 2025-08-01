@@ -23,20 +23,18 @@ final class HighLevelAPITests: XCTestCase {
         try? FileManager.default.removeItem(atPath: testSocketPath)
     }
     
-    func testJanusClientCreation() throws {
-        let client = try JanusClient(
+    func testJanusClientCreation() async throws {
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel",
-            apiSpec: testAPISpec
+            channelId: "testChannel"
         )
         XCTAssertNotNil(client)
     }
     
     func testJanusCommandValidation() async throws {
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel",
-            apiSpec: testAPISpec
+            channelId: "testChannel"
         )
         
         // Valid command should pass validation
@@ -52,10 +50,9 @@ final class HighLevelAPITests: XCTestCase {
     }
     
     func testDatagramInvalidCommand() async throws {
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel",
-            apiSpec: testAPISpec
+            channelId: "testChannel"
         )
         
         // Invalid command should fail validation
@@ -74,10 +71,9 @@ final class HighLevelAPITests: XCTestCase {
     }
     
     func testDatagramArgumentValidation() async throws {
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel",
-            apiSpec: testAPISpec
+            channelId: "testChannel"
         )
         
         // Missing required argument should fail

@@ -47,7 +47,7 @@ final class SecurityTests: XCTestCase {
     
     // MARK: - Path Traversal Attack Tests
     
-    func testPathTraversalAttack() {
+    func testPathTraversalAttack() async {
         let maliciousPaths = [
             "/tmp/../etc/passwd",
             "/tmp/../../usr/bin/sh",
@@ -62,54 +62,56 @@ final class SecurityTests: XCTestCase {
         ]
         
         for maliciousPath in maliciousPaths {
-            XCTAssertThrowsError(
-                try JanusClient(
+            do {
+                _ = try await JanusClient(
                     socketPath: maliciousPath,
-                    channelId: "testChannel",
-                    apiSpec: testAPISpec
-                ),
-                "Path traversal attack should be blocked: \(maliciousPath)"
-            ) { error in
-                XCTAssertTrue(error is JanusError)
-                if case .invalidSocketPath(let message) = error as? JanusError {
+                    channelId: "testChannel"
+                )
+                XCTFail("Path traversal attack should be blocked: \(maliciousPath)")
+            } catch let error as JanusError {
+                if case .invalidSocketPath(let message) = error {
                     XCTAssertTrue(message.contains("traversal") || message.contains("invalid"))
+                } else {
+                    // Other JanusErrors are also acceptable for security blocking
                 }
+            } catch {
+                XCTFail("Expected JanusError for path traversal: \(error)")
             }
         }
     }
     
-    func testInvalidSocketPathCharacters() {
+    func testInvalidSocketPathCharacters() async {
         // Test null byte injection - this should be rejected
         let nullBytePaths = [
             "/tmp/socket\0path",           // Null byte
         ]
         
         for invalidPath in nullBytePaths {
-            XCTAssertThrowsError(
-                try JanusClient(
+            do {
+                _ = try await JanusClient(
                     socketPath: invalidPath,
-                    channelId: "testChannel",
-                    apiSpec: testAPISpec
-                ),
-                "Null byte in path should be rejected: \(invalidPath.debugDescription)"
-            )
+                    channelId: "testChannel"
+                )
+                XCTFail("Null byte in path should be rejected: \(invalidPath.debugDescription)")
+            } catch {
+                // Expected - null bytes should be rejected
+            }
         }
         
         // Other characters like tab, newline, etc. may be valid in Unix paths
         // The primary security concern is null byte injection which is tested above
     }
     
-    func testSocketPathLengthLimits() {
+    func testSocketPathLengthLimits() async {
         // Unix socket paths have a maximum length (typically 108 characters on most systems)
         let longPath = "/tmp/" + String(repeating: "a", count: 200) + ".sock"
         
         // This might throw due to system limits rather than our validation
         // The important thing is that it doesn't crash or cause undefined behavior
         do {
-            _ = try JanusClient(
+            _ = try await JanusClient(
                 socketPath: longPath,
-                channelId: "testChannel",
-                apiSpec: testAPISpec
+                channelId: "testChannel"
             )
         } catch {
             // Expected to fail due to system limitations
@@ -119,7 +121,7 @@ final class SecurityTests: XCTestCase {
     
     // MARK: - Input Injection Attack Tests
     
-    func testChannelIdInjectionAttacks() {
+    func testChannelIdInjectionAttacks() async {
         let maliciousChannelIds = [
             "channel'; DROP TABLE users; --",    // SQL injection attempt
             "channel$(rm -rf /)",                // Command injection attempt
@@ -134,24 +136,24 @@ final class SecurityTests: XCTestCase {
         ]
         
         for maliciousId in maliciousChannelIds {
-            XCTAssertThrowsError(
-                try JanusClient(
+            do {
+                _ = try await JanusClient(
                     socketPath: testSocketPath,
-                    channelId: maliciousId,
-                    apiSpec: testAPISpec
-                ),
-                "Malicious channel ID should be rejected: \(maliciousId.debugDescription)"
-            ) { error in
-                XCTAssertTrue(error is JanusError, "Expected JanusError but got \(error)")
+                    channelId: maliciousId
+                )
+                XCTFail("Malicious channel ID should be rejected: \(maliciousId.debugDescription)")
+            } catch let error as JanusError {
+                // Expected - malicious IDs should be rejected
+            } catch {
+                XCTFail("Expected JanusError but got \(error)")
             }
         }
     }
     
     func testCommandInjectionInArguments() async throws {
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel",
-            apiSpec: testAPISpec
+            channelId: "testChannel"
         )
         
         let maliciousArguments = [
@@ -190,11 +192,10 @@ final class SecurityTests: XCTestCase {
     
     // MARK: - JSON/Protocol Attack Tests
     
-    func testMalformedJSONAttacks() throws {
-        let client = try JanusClient(
+    func testMalformedJSONAttacks() async throws {
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel", 
-            apiSpec: testAPISpec
+            channelId: "testChannel"
         )
         
         // Test that the client's message validation works properly
@@ -230,10 +231,9 @@ final class SecurityTests: XCTestCase {
     }
     
     func testUnicodeNormalizationAttacks() async throws {
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel",
-            apiSpec: testAPISpec
+            channelId: "testChannel"
         )
         
         // Unicode normalization attacks
@@ -265,10 +265,9 @@ final class SecurityTests: XCTestCase {
     // MARK: - Memory Exhaustion Attack Tests
     
     func testLargePayloadAttacks() async throws {
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel",
-            apiSpec: testAPISpec
+            channelId: "testChannel"
         )
         
         // Test various large payload sizes
@@ -303,10 +302,9 @@ final class SecurityTests: XCTestCase {
     }
     
     func testRepeatedLargePayloadAttacks() async throws {
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel",
-            apiSpec: testAPISpec
+            channelId: "testChannel"
         )
         
         // Test rapid repeated large payloads (DoS attempt)
@@ -330,10 +328,9 @@ final class SecurityTests: XCTestCase {
     
     func testConnectionPoolExhaustion() async throws {
         // SOCK_DGRAM doesn't use connection pools - each operation is independent
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel", 
-            apiSpec: testAPISpec
+            channelId: "testChannel"
         )
         
         // Try to exhaust the connection pool
@@ -356,10 +353,9 @@ final class SecurityTests: XCTestCase {
     }
     
     func testRapidConnectionAttempts() async throws {
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel",
-            apiSpec: testAPISpec
+            channelId: "testChannel"
         )
         
         // Rapid connection attempts (potential DoS)
@@ -381,13 +377,12 @@ final class SecurityTests: XCTestCase {
     
     // MARK: - Configuration Security Tests
     
-    func testInsecureConfigurationPrevention() throws {
+    func testInsecureConfigurationPrevention() async throws {
         // Test that the library can be configured with reasonable defaults
         // SOCK_DGRAM uses internal default configuration
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel",
-            apiSpec: testAPISpec
+            channelId: "testChannel"
         )
         
         // Configuration values are internal to the SOCK_DGRAM implementation
@@ -395,14 +390,13 @@ final class SecurityTests: XCTestCase {
         XCTAssertNotNil(client)
     }
     
-    func testExtremeConfigurationValues() {
+    func testExtremeConfigurationValues() async {
         // Test extreme but potentially valid configuration values
         // SOCK_DGRAM handles extreme values internally with built-in limits
         do {
-            _ = try JanusClient(
+            _ = try await JanusClient(
                 socketPath: testSocketPath,
-                channelId: "testChannel",
-                apiSpec: testAPISpec
+                channelId: "testChannel"
             )
             // If accepted, it should work without causing issues
         } catch {
@@ -412,12 +406,11 @@ final class SecurityTests: XCTestCase {
     
     // MARK: - Validation Bypass Tests
     
-    func testValidationBypassAttempts() throws {
+    func testValidationBypassAttempts() async throws {
         // Test attempts to bypass argument validation
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel",
-            apiSpec: testAPISpec
+            channelId: "testChannel"
         )
         
         // Command validation happens at send time, not handler registration time

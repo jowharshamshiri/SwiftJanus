@@ -25,66 +25,63 @@ final class JanusClientTests: XCTestCase {
         try? FileManager.default.removeItem(atPath: testSocketPath)
     }
     
-    func testClientInitializationWithValidSpec() throws {
-        let client = try JanusClient(
+    func testClientInitializationWithValidSpec() async throws {
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel",
-            apiSpec: testAPISpec
+            channelId: "testChannel"
         )
         
         XCTAssertNotNil(client)
     }
     
-    func testClientInitializationWithInvalidChannel() {
-        XCTAssertThrowsError(
-            try JanusClient(
+    func testClientInitializationWithInvalidChannel() async {
+        do {
+            _ = try await JanusClient(
                 socketPath: testSocketPath,
-                channelId: "nonExistentChannel",
-                apiSpec: testAPISpec
+                channelId: "nonExistentChannel"
             )
-        ) { error in
-            XCTAssertTrue(error is JanusError)
-            if case .invalidChannel(let message) = error as? JanusError {
+            XCTFail("Expected invalidChannel error")
+        } catch let error as JanusError {
+            if case .invalidChannel(let message) = error {
                 XCTAssertTrue(message.contains("nonExistentChannel"))
+            } else {
+                XCTFail("Expected invalidChannel error, got \(error)")
             }
+        } catch {
+            XCTFail("Expected JanusError, got \(error)")
         }
     }
     
-    func testClientInitializationWithInvalidSpec() {
-        let invalidSpec = APISpecification(
-            version: "",
-            channels: [:]
-        )
-        
-        XCTAssertThrowsError(
-            try JanusClient(
+    func testClientInitializationWithInvalidSpec() async {
+        // Test invalid channel (spec is now fetched from server)
+        do {
+            _ = try await JanusClient(
                 socketPath: testSocketPath,
-                channelId: "testChannel",
-                apiSpec: invalidSpec
+                channelId: "nonExistentChannel"
             )
-        ) { error in
-            // Should throw JanusError.invalidChannel because the channel doesn't exist
-            // This happens before API spec validation
+            XCTFail("Expected connection or channel error")
+        } catch let error as JanusError {
+            // Should throw connection error or invalid channel
             XCTAssertTrue(error is JanusError)
+        } catch {
+            XCTFail("Expected JanusError, got \(error)")
         }
     }
     
-    func testRegisterValidCommandHandler() throws {
-        let client = try JanusClient(
+    func testRegisterValidCommandHandler() async throws {
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel",
-            apiSpec: testAPISpec
+            channelId: "testChannel"
         )
         
         // Client is valid and ready to send commands
         XCTAssertNotNil(client)
     }
     
-    func testRegisterInvalidCommandHandler() throws {
-        let client = try JanusClient(
+    func testRegisterInvalidCommandHandler() async throws {
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel",
-            apiSpec: testAPISpec
+            channelId: "testChannel"
         )
         
         // Command validation happens at send time, not handler registration time
@@ -93,10 +90,9 @@ final class JanusClientTests: XCTestCase {
     }
     
     func testSocketCommandValidation() async throws {
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel",
-            apiSpec: testAPISpec
+            channelId: "testChannel"
         )
         
         // Test with missing required argument
@@ -133,10 +129,9 @@ final class JanusClientTests: XCTestCase {
     }
     
     func testCommandMessageSerialization() async throws {
-        let client = try JanusClient(
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel",
-            apiSpec: testAPISpec
+            channelId: "testChannel"
         )
         
         // This test verifies that command serialization works without connecting
@@ -158,17 +153,15 @@ final class JanusClientTests: XCTestCase {
         }
     }
     
-    func testMultipleClientInstances() throws {
-        let client1 = try JanusClient(
+    func testMultipleClientInstances() async throws {
+        let client1 = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel",
-            apiSpec: testAPISpec
+            channelId: "testChannel"
         )
         
-        let client2 = try JanusClient(
+        let client2 = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel",
-            apiSpec: testAPISpec
+            channelId: "testChannel"
         )
         
         // Both clients should be created successfully
@@ -179,11 +172,10 @@ final class JanusClientTests: XCTestCase {
         // Handler registration would be server-side functionality
     }
     
-    func testCommandHandlerWithAsyncOperations() throws {
-        let client = try JanusClient(
+    func testCommandHandlerWithAsyncOperations() async throws {
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel",
-            apiSpec: testAPISpec
+            channelId: "testChannel"
         )
         
         // Async operations would be handled server-side, not in client handlers
@@ -193,11 +185,10 @@ final class JanusClientTests: XCTestCase {
         XCTAssertTrue(true)
     }
     
-    func testCommandHandlerErrorHandling() throws {
-        let client = try JanusClient(
+    func testCommandHandlerErrorHandling() async throws {
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel",
-            apiSpec: testAPISpec
+            channelId: "testChannel"
         )
         
         // Error handling would be managed by server-side command handlers
@@ -206,13 +197,10 @@ final class JanusClientTests: XCTestCase {
         XCTAssertTrue(true)
     }
     
-    func testAPISpecWithComplexArguments() throws {
-        let complexSpec = createComplexAPISpec()
-        
-        let client = try JanusClient(
+    func testAPISpecWithComplexArguments() async throws {
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "complexChannel",
-            apiSpec: complexSpec
+            channelId: "complexChannel"
         )
         
         XCTAssertNotNil(client)
@@ -220,13 +208,10 @@ final class JanusClientTests: XCTestCase {
         // Client tests don't need command handlers - those are server-side functionality
     }
     
-    func testArgumentValidationConstraints() throws {
-        let spec = createSpecWithValidation()
-        
-        let client = try JanusClient(
+    func testArgumentValidationConstraints() async throws {
+        let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "validationChannel",
-            apiSpec: spec
+            channelId: "validationChannel"
         )
         
         // Client tests focus on sending commands, not handling them

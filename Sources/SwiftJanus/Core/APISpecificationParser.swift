@@ -95,6 +95,12 @@ public final class APISpecificationParser {
             throw APISpecificationError.validationFailed("Command name cannot be empty in channel '\(channelId)'")
         }
         
+        // Reserved built-in commands cannot be defined in API specifications
+        let reservedCommands: Set<String> = ["spec", "ping", "echo", "get_info", "validate", "slow_process"]
+        if reservedCommands.contains(commandName) {
+            throw APISpecificationError.validationFailed("Command '\(commandName)' is reserved and cannot be defined in API specification in channel '\(channelId)'")
+        }
+        
         // Validate arguments if present
         if let args = command.args {
             for (argName, argSpec) in args {
@@ -109,8 +115,11 @@ public final class APISpecificationParser {
         
         // Validate error codes if present
         if let errorCodes = command.errorCodes {
-            for (errorName, errorSpec) in errorCodes {
-                try validateError(errorName: errorName, errorSpec: errorSpec, context: "command '\(commandName)' in channel '\(channelId)'")
+            for errorCode in errorCodes {
+                // Error codes are now just strings, no detailed spec validation needed
+                if errorCode.isEmpty {
+                    throw APISpecificationError.invalidFormat("Empty error code in command '\(commandName)' in channel '\(channelId)'")
+                }
             }
         }
     }
