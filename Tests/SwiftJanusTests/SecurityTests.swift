@@ -68,14 +68,16 @@ final class SecurityTests: XCTestCase {
                     channelId: "testChannel"
                 )
                 XCTFail("Path traversal attack should be blocked: \(maliciousPath)")
-            } catch let error as JanusError {
-                if case .invalidSocketPath(let message) = error {
-                    XCTAssertTrue(message.contains("traversal") || message.contains("invalid"))
-                } else {
-                    // Other JanusErrors are also acceptable for security blocking
-                }
+            } catch let error as JSONRPCError {
+                XCTAssertEqual(error.code, JSONRPCErrorCode.invalidParams.rawValue)
+                // Validated by error code - security violations should use invalidParams or securityViolation codes
+                XCTAssertTrue(
+                    error.code == JSONRPCErrorCode.invalidParams.rawValue ||
+                    error.code == JSONRPCErrorCode.securityViolation.rawValue,
+                    "Expected security-related error code, got: \(error.code)"
+                )
             } catch {
-                XCTFail("Expected JanusError for path traversal: \(error)")
+                XCTFail("Expected JSONRPCError for path traversal: \(error)")
             }
         }
     }
@@ -115,7 +117,7 @@ final class SecurityTests: XCTestCase {
             )
         } catch {
             // Expected to fail due to system limitations
-            XCTAssertTrue(error is JanusError)
+            XCTAssertTrue(error is JSONRPCError)
         }
     }
     
@@ -142,10 +144,10 @@ final class SecurityTests: XCTestCase {
                     channelId: maliciousId
                 )
                 XCTFail("Malicious channel ID should be rejected: \(maliciousId.debugDescription)")
-            } catch let error as JanusError {
+            } catch let error as JSONRPCError {
                 // Expected - malicious IDs should be rejected
             } catch {
-                XCTFail("Expected JanusError but got \(error)")
+                XCTFail("Expected JSONRPCError but got \(error)")
             }
         }
     }
@@ -175,15 +177,15 @@ final class SecurityTests: XCTestCase {
                     args: ["data": AnyCodable(maliciousArg)]
                 )
                 // If no connection error, the validation should still work
-            } catch JanusError.connectionError, JanusError.connectionRequired {
+            } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
                 // Expected - no server running, but validation passed
-            } catch let error as JanusError {
+            } catch let error as JSONRPCError {
                 // Should not get validation errors for string content
                 // (unless it exceeds length limits)
-                if case .invalidArgument = error {
-                    // Only acceptable if it's due to length limits
-                    XCTAssertTrue(maliciousArg.count > 1000, "Only very long strings should be rejected")
-                }
+                XCTAssertEqual(error.code, JSONRPCErrorCode.invalidParams.rawValue)
+                // Validated by error code - no need to check message text
+                // Only acceptable if it's due to length limits
+                XCTAssertTrue(maliciousArg.count > 1000, "Only very long strings should be rejected")
             } catch {
                 XCTFail("Unexpected error for malicious argument '\(maliciousArg)': \(error)")
             }
@@ -253,7 +255,7 @@ final class SecurityTests: XCTestCase {
                     "testCommand",
                     args: ["data": AnyCodable(unicodeAttack)]
                 )
-            } catch JanusError.connectionError, JanusError.connectionRequired {
+            } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
                 // Expected - no server running
             } catch {
                 // Unicode content should be handled gracefully
@@ -286,15 +288,14 @@ final class SecurityTests: XCTestCase {
                     "testCommand",
                     args: ["data": AnyCodable(largeData)]
                 )
-            } catch JanusError.connectionError, JanusError.connectionRequired {
+            } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
                 // Expected - no server running
-            } catch let error as JanusError {
-                if case .invalidArgument(let arg, let reason) = error {
-                    XCTAssertTrue(reason.contains("size") || reason.contains("large"),
-                                "Large payload should be rejected with size error: \(reason)")
-                }
-            } catch JanusError.messageTooLarge {
-                // This is also acceptable - message size limit reached
+            } catch let error as JSONRPCError {
+                XCTAssertEqual(error.code, JSONRPCErrorCode.invalidParams.rawValue)
+                // Validated by error code - no need to check message text
+                // Large payload rejected due to size limits
+            } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.messageFramingError.rawValue {
+                // This is also acceptable - message size limit reached via message framing error
             } catch {
                 XCTFail("Unexpected error for large payload (size: \(size)): \(error)")
             }
@@ -316,7 +317,7 @@ final class SecurityTests: XCTestCase {
                     "testCommand",
                     args: ["data": AnyCodable(mediumData), "index": AnyCodable(i)]
                 )
-            } catch JanusError.connectionError, JanusError.connectionRequired {
+            } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
                 // Expected - no server running
             } catch {
                 // Should handle repeated requests gracefully

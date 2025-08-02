@@ -44,32 +44,43 @@ public class JanusClient {
             datagramTimeout: datagramTimeout
         )
         
-        // Initialize manifest to nil first
+        // Initialize manifest to nil - will be loaded lazily when needed (matching Go pattern)
         self.manifest = nil
-        
-        // Always fetch Manifest from server (matching Go/Rust/TypeScript)
-        if enableValidation {
-            // Fetch Manifest from server using spec command
-            do {
-                let specResponse = try await sendBuiltinCommand("spec", args: nil, timeout: 10.0)
-                if specResponse.success,
-                   let resultData = specResponse.result,
-                   let jsonData = try? JSONSerialization.data(withJSONObject: resultData),
-                   let fetchedSpec = try? ManifestParser().parseJSON(jsonData) {
-                    self.manifest = fetchedSpec
-                } else {
-                    // If spec command fails, continue without validation
-                    self.manifest = nil
-                }
-            } catch {
-                // If spec fetching fails, continue without validation (matching Go/Rust behavior)
-                self.manifest = nil
-            }
-        }
     }
     
     deinit {
         responseTracker.shutdown()
+    }
+    
+    /// Ensure manifest is loaded if validation is enabled (lazy loading pattern like Go)
+    private func ensureManifestLoaded() async throws {
+        // Skip if manifest already loaded or validation disabled
+        if manifest != nil || !enableValidation {
+            return
+        }
+        
+        // Fetch Manifest from server using spec command (bypass validation to avoid circular dependency)
+        do {
+            let specResponse = try await sendBuiltinCommand("spec", args: nil, timeout: 10.0)
+            if specResponse.success,
+               let resultData = specResponse.result,
+               let jsonData = try? JSONSerialization.data(withJSONObject: resultData),
+               let fetchedSpec = try? ManifestParser().parseJSON(jsonData) {
+                self.manifest = fetchedSpec
+            } else {
+                // If spec command fails, continue without validation
+                self.manifest = nil
+            }
+        } catch {
+            // If spec fetching fails, continue without validation (matching Go behavior)
+            // Preserve connection errors instead of wrapping as validation errors
+            if error.localizedDescription.contains("dial") || 
+               error.localizedDescription.contains("connect") || 
+               error.localizedDescription.contains("No such file") {
+                throw error  // Preserve connection errors
+            }
+            self.manifest = nil
+        }
     }
     
     /// Send command via SOCK_DGRAM and wait for response
@@ -92,6 +103,9 @@ public class JanusClient {
             timeout: timeout ?? defaultTimeout
         )
         
+        // Ensure manifest is loaded if validation is enabled (lazy loading like Go)
+        try await ensureManifestLoaded()
+        
         // Validate command against Manifest 
         if enableValidation, let spec = manifest {
             try validateCommandAgainstSpec(spec, command: janusCommand)
@@ -110,11 +124,11 @@ public class JanusClient {
         
         // Validate response correlation
         guard response.commandId == commandId else {
-            throw JanusError.protocolError("Response correlation mismatch: expected \\(commandId), got \\(response.commandId)")
+            throw JSONRPCError.create(code: .responseTrackingError, details: "Response correlation mismatch: expected \\(commandId), got \\(response.commandId)")
         }
         
         guard response.channelId == channelId else {
-            throw JanusError.protocolError("Channel mismatch: expected \\(channelId), got \\(response.channelId)")
+            throw JSONRPCError.create(code: .responseTrackingError, details: "Channel mismatch: expected \\(channelId), got \\(response.channelId)")
         }
         
         // Update connection state after successful operation
@@ -140,6 +154,9 @@ public class JanusClient {
             args: args,
             timeout: nil
         )
+        
+        // Ensure manifest is loaded if validation is enabled (lazy loading like Go)
+        try await ensureManifestLoaded()
         
         // Validate command against Manifest 
         if enableValidation, let spec = manifest {
@@ -168,48 +185,48 @@ public class JanusClient {
     ) throws {
         // Validate socket path
         guard !socketPath.isEmpty else {
-            throw JanusError.invalidSocketPath("Socket path cannot be empty")
+            throw JSONRPCError.create(code: .invalidParams, details: "Socket path cannot be empty")
         }
         
         // Security validation for socket path (matching Go implementation)
         if socketPath.contains("\0") {
-            throw JanusError.invalidSocketPath("Socket path contains invalid null byte")
+            throw JSONRPCError.create(code: .invalidParams, details: "Socket path contains invalid null byte")
         }
         
         if socketPath.contains("..") {
-            throw JanusError.invalidSocketPath("Socket path contains path traversal sequence")
+            throw JSONRPCError.create(code: .invalidParams, details: "Socket path contains path traversal sequence")
         }
         
         // Validate channel ID
         guard !channelId.isEmpty else {
-            throw JanusError.invalidChannel("Channel ID cannot be empty")
+            throw JSONRPCError.create(code: .invalidParams, details: "Channel ID cannot be empty")
         }
         
         // Security validation for channel ID (matching Go implementation)
         let forbiddenChars = CharacterSet(charactersIn: "\0;`$|&\n\r\t")
         if channelId.rangeOfCharacter(from: forbiddenChars) != nil {
-            throw JanusError.invalidChannel("Channel ID contains forbidden characters")
+            throw JSONRPCError.create(code: .invalidParams, details: "Channel ID contains forbidden characters")
         }
         
         if channelId.contains("..") || channelId.hasPrefix("/") {
-            throw JanusError.invalidChannel("Channel ID contains invalid path characters")
+            throw JSONRPCError.create(code: .invalidParams, details: "Channel ID contains invalid path characters")
         }
     }
     
     private func validateCommandAgainstSpec(_ spec: Manifest, command: JanusCommand) throws {
         // Check if command is reserved (built-in commands should never be in Manifests)
         if isBuiltinCommand(command.command) {
-            throw JanusError.validationError("Command '\(command.command)' is reserved and cannot be used from Manifest")
+            throw JSONRPCError.create(code: .manifestValidationError, details: "Command '\(command.command)' is reserved and cannot be used from Manifest")
         }
         
         // Check if channel exists
         guard let channel = spec.channels[command.channelId] else {
-            throw JanusError.validationError("Channel \(command.channelId) not found in Manifest")
+            throw JSONRPCError.create(code: .validationFailed, details: "Channel \(command.channelId) not found in Manifest")
         }
         
         // Check if command exists in channel
         guard channel.commands.keys.contains(command.command) else {
-            throw JanusError.unknownCommand(command.command)
+            throw JSONRPCError.create(code: .methodNotFound, details: "Unknown command: \(command.command)")
         }
         
         // Validate command arguments
@@ -221,7 +238,7 @@ public class JanusClient {
             // Check for required arguments
             for (argName, argSpec) in specArgs {
                 if argSpec.required && args[argName] == nil {
-                    throw JanusError.missingRequiredArgument(argName)
+                    throw JSONRPCError.create(code: .invalidParams, details: "Missing required argument: \(argName)")
                 }
             }
         }
@@ -290,11 +307,11 @@ public class JanusClient {
         
         // Validate response correlation
         guard response.commandId == commandId else {
-            throw JanusError.protocolError("Response correlation mismatch: expected \\(commandId), got \\(response.commandId)")
+            throw JSONRPCError.create(code: .responseTrackingError, details: "Response correlation mismatch: expected \\(commandId), got \\(response.commandId)")
         }
         
         guard response.channelId == channelId else {
-            throw JanusError.protocolError("Channel mismatch: expected \\(channelId), got \\(response.channelId)")
+            throw JSONRPCError.create(code: .responseTrackingError, details: "Channel mismatch: expected \\(channelId), got \\(response.channelId)")
         }
         
         return response
@@ -387,16 +404,16 @@ public class JanusClient {
     public func registerCommandHandler(_ command: String, handler: @escaping (JanusCommand) throws -> [String: AnyCodable]) throws {
         // Validate that command exists in Manifest
         guard let manifest = self.manifest else {
-            throw JanusError.validationError("Cannot register handler: Manifest not loaded")
+            throw JSONRPCError.create(code: .validationFailed, details: "Cannot register handler: Manifest not loaded")
         }
         
         // Check if command exists in the current channel
         guard let channel = manifest.channels[channelId] else {
-            throw JanusError.validationError("Channel \(channelId) not found in Manifest")
+            throw JSONRPCError.create(code: .validationFailed, details: "Channel \(channelId) not found in Manifest")
         }
         
         guard channel.commands.keys.contains(command) else {
-            throw JanusError.validationError("Command \(command) not found in channel \(channelId) specification")
+            throw JSONRPCError.create(code: .validationFailed, details: "Command \(command) not found in channel \(channelId) specification")
         }
         
         // In SOCK_DGRAM, we can't actually register handlers on the client side

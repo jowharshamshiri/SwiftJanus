@@ -51,7 +51,7 @@ public struct CommandStatistics {
 public class ResponseTracker {
     private var pendingCommands: [String: PendingCommand] = [:]
     private let queue = DispatchQueue(label: "response.tracker", attributes: .concurrent)
-    private var cleanupTimer: Timer?
+    private var dispatchTimer: DispatchSourceTimer?
     private let config: TrackerConfig
     private var eventHandlers: [String: [(Any) -> Void]] = [:]
     private var isShutdown = false
@@ -146,21 +146,26 @@ public class ResponseTracker {
     /// Cancel all pending commands
     public func cancelAllCommands() -> Int {
         return queue.sync(flags: .barrier) {
-            let cancelledCount = pendingCommands.count
-            let commandIds = Array(pendingCommands.keys)
-            
-            for commandId in commandIds {
-                if let pendingCommand = pendingCommands.removeValue(forKey: commandId) {
-                    totalRejectedCommands += 1
-                    pendingCommand.reject(JSONRPCError.create(code: .responseTrackingError, details: "All commands cancelled"))
-                }
-            }
-            
-            // Emit cancel all event
-            emit("cancel_all", data: ["cancelledCount": cancelledCount])
-            
-            return cancelledCount
+            return cancelAllCommandsUnsafe()
         }
+    }
+    
+    /// Cancel all pending commands (unsafe - must be called within queue)
+    private func cancelAllCommandsUnsafe() -> Int {
+        let cancelledCount = pendingCommands.count
+        let commandIds = Array(pendingCommands.keys)
+        
+        for commandId in commandIds {
+            if let pendingCommand = pendingCommands.removeValue(forKey: commandId) {
+                totalRejectedCommands += 1
+                pendingCommand.reject(JSONRPCError.create(code: .responseTrackingError, details: "All commands cancelled"))
+            }
+        }
+        
+        // Emit cancel all event
+        emit("cancel_all", data: ["cancelledCount": cancelledCount])
+        
+        return cancelledCount
     }
     
     /// Get command statistics
@@ -209,11 +214,11 @@ public class ResponseTracker {
             guard !isShutdown else { return }
             isShutdown = true
             
-            cleanupTimer?.invalidate()
-            cleanupTimer = nil
+            dispatchTimer?.cancel()
+            dispatchTimer = nil
             
             // Cancel all pending commands
-            _ = cancelAllCommands()
+            _ = cancelAllCommandsUnsafe()
             
             // Emit shutdown event
             emit("shutdown", data: ["timestamp": Date().timeIntervalSince1970])
@@ -223,9 +228,16 @@ public class ResponseTracker {
     // MARK: - Private Implementation
     
     private func setupCleanupTimer() {
-        cleanupTimer = Timer.scheduledTimer(withTimeInterval: config.cleanupInterval, repeats: true) { [weak self] _ in
+        // Use DispatchQueue timer instead of Timer to avoid RunLoop dependency in tests
+        let interval = DispatchTimeInterval.seconds(Int(config.cleanupInterval))
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global())
+        timer.schedule(deadline: .now() + interval, repeating: interval)
+        timer.setEventHandler { [weak self] in
             self?.cleanupExpiredCommands()
         }
+        timer.resume()
+        // Store the timer reference (we'll need to update the property type)
+        self.dispatchTimer = timer
     }
     
     private func cleanupExpiredCommands() {

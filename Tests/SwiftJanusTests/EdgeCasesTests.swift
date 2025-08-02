@@ -211,10 +211,8 @@ final class EdgeCasesTests: XCTestCase {
         do {
             _ = try await client.sendCommand("noArgsCommand")
             XCTFail("Command should have failed due to no server running")
-        } catch JanusError.connectionError, JanusError.connectionRequired {
-            // Expected - no server running
-        } catch JanusError.connectionTestFailed {
-            // Expected in SOCK_DGRAM - connection fails before validation can occur
+        } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue || error.code == JSONRPCErrorCode.socketError.rawValue {
+            // Expected - no server running or socket connection failed
         } catch {
             XCTFail("Command with no args should validate correctly but fail on connection: \(error)")
         }

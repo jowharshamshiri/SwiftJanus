@@ -37,7 +37,7 @@ class ServerFeaturesTests: XCTestCase {
         // Create client socket
         let clientSocket = Darwin.socket(AF_UNIX, SOCK_DGRAM, 0)
         guard clientSocket != -1 else {
-            throw JanusError.socketCreationFailed("Failed to create client socket")
+            throw JSONRPCError.create(code: .socketError, details: "Failed to create client socket")
         }
         defer { Darwin.close(clientSocket) }
         
@@ -45,7 +45,7 @@ class ServerFeaturesTests: XCTestCase {
         let responseSocketPath = tempDir.appendingPathComponent("response-\(command.id).sock").path
         let responseSocket = Darwin.socket(AF_UNIX, SOCK_DGRAM, 0)
         guard responseSocket != -1 else {
-            throw JanusError.socketCreationFailed("Failed to create response socket")
+            throw JSONRPCError.create(code: .socketError, details: "Failed to create response socket")
         }
         defer { Darwin.close(responseSocket) }
         
@@ -68,7 +68,7 @@ class ServerFeaturesTests: XCTestCase {
         }
         
         guard bindResult == 0 else {
-            throw JanusError.bindFailed("Failed to bind response socket")
+            throw JSONRPCError.create(code: .socketError, details: "Failed to bind response socket")
         }
         
         defer { try? FileManager.default.removeItem(atPath: responseSocketPath) }
@@ -107,7 +107,7 @@ class ServerFeaturesTests: XCTestCase {
         }
         
         guard sendResult != -1 else {
-            throw JanusError.sendFailed("Failed to send command")
+            throw JSONRPCError.create(code: .socketError, details: "Failed to send command")
         }
         
         // Wait for response
@@ -124,14 +124,14 @@ class ServerFeaturesTests: XCTestCase {
                 let response = try JSONDecoder().decode(JanusResponse.self, from: responseData)
                 return response
             } else if bytesReceived == 0 {
-                throw JanusError.connectionClosed("Response socket closed")
+                throw JSONRPCError.create(code: .socketError, details: "Response socket closed")
             }
             
             // Small delay before retrying
             try await Task.sleep(nanoseconds: 10_000_000) // 10ms
         }
         
-        throw JanusError.timeout("Timeout waiting for response")
+        throw JSONRPCError.create(code: .handlerTimeout, details: "Timeout waiting for response")
     }
     
     func testCommandHandlerRegistry() async throws {

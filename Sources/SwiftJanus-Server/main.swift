@@ -1,7 +1,8 @@
 import Foundation
 import SwiftJanus
 
-func main() async {
+struct SwiftJanusServer {
+    static func main() async {
         // Immediate output to verify the binary starts
         print("Swift server binary started successfully")
         fflush(stdout)
@@ -97,14 +98,11 @@ func main() async {
             
         } catch {
             print("ERROR: Failed to start server: \(error)")
-            exit(1)
+            Foundation.exit(1)
         }
+    }
 }
 
-// Run the async main function
 Task {
-    await main()
+    await SwiftJanusServer.main()
 }
-
-// Keep the program running
-RunLoop.main.run()

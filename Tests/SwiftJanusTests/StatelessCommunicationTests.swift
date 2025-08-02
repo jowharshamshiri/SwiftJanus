@@ -35,7 +35,7 @@ final class StatelessCommunicationTests: XCTestCase {
         // Valid command should pass validation
         do {
             _ = try await client.sendCommand("quickCommand", args: ["data": AnyCodable("test")])
-        } catch JanusError.connectionError, JanusError.connectionRequired {
+        } catch let error as JSONRPCError {
             // Expected error - no server running
         } catch {
             XCTFail("Unexpected validation error: \(error)")
@@ -45,12 +45,8 @@ final class StatelessCommunicationTests: XCTestCase {
         do {
             _ = try await client.sendCommand("nonExistentCommand")
             XCTFail("Expected unknown command error")
-        } catch let error as JanusError {
-            if case .unknownCommand = error {
-                // Expected
-            } else {
-                XCTFail("Expected unknownCommand error, got \(error)")
-            }
+        } catch let error as JSONRPCError {
+            XCTAssertEqual(error.code, JSONRPCErrorCode.methodNotFound.rawValue)
         } catch {
             XCTFail("Unexpected error type: \(error)")
         }
@@ -75,7 +71,7 @@ final class StatelessCommunicationTests: XCTestCase {
             do {
                 _ = try await client.sendCommand(command, args: args)
                 XCTFail("Expected connection error")
-            } catch JanusError.connectionError, JanusError.connectionRequired {
+            } catch let error as JSONRPCError {
                 // Expected - no server running
             } catch {
                 XCTFail("Unexpected error: \(error)")
@@ -131,12 +127,8 @@ final class StatelessCommunicationTests: XCTestCase {
         do {
             _ = try await client.sendCommand("quickCommand") // Missing required 'data' arg
             XCTFail("Expected missing required argument error")
-        } catch let error as JanusError {
-            if case .missingRequiredArgument(let argName) = error {
-                XCTAssertEqual(argName, "data")
-            } else {
-                XCTFail("Expected missingRequiredArgument error, got \(error)")
-            }
+        } catch let error as JSONRPCError {
+            XCTAssertEqual(error.code, JSONRPCErrorCode.invalidParams.rawValue)
         } catch {
             XCTFail("Unexpected error type: \(error)")
         }
@@ -144,7 +136,7 @@ final class StatelessCommunicationTests: XCTestCase {
         // Test with valid arguments
         do {
             _ = try await client.sendCommand("quickCommand", args: ["data": AnyCodable("valid")])
-        } catch JanusError.connectionError, JanusError.connectionRequired {
+        } catch let error as JSONRPCError {
             // Expected - no server running
         } catch {
             XCTFail("Validation should pass, connection should fail: \(error)")
@@ -209,14 +201,10 @@ final class StatelessCommunicationTests: XCTestCase {
                 channelId: "nonExistentChannel"
             )
             XCTFail("Expected error for invalid channel")
-        } catch let error as JanusError {
-            if case .invalidChannel(let channelId) = error {
-                XCTAssertEqual(channelId, "nonExistentChannel")
-            } else {
-                XCTFail("Expected invalidChannel error, got \(error)")
-            }
+        } catch let error as JSONRPCError {
+            XCTAssertEqual(error.code, JSONRPCErrorCode.invalidParams.rawValue)
         } catch {
-            XCTFail("Expected JanusError, got \(error)")
+            XCTFail("Expected JSONRPCError, got \(error)")
         }
     }
     

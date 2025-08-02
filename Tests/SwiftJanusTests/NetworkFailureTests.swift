@@ -56,11 +56,11 @@ final class NetworkFailureTests: XCTestCase {
         do {
             _ = try await client.sendCommand("testCommand", args: ["data": AnyCodable("test")])
             XCTFail("Connection to non-existent socket should fail")
-        } catch JanusError.connectionError {
+        } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
             // Expected
-        } catch JanusError.connectionRequired {
+        } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
             // Also acceptable
-        } catch JanusError.connectionTestFailed {
+        } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
             // Expected in SOCK_DGRAM architecture
         } catch {
             XCTFail("Unexpected error type: \(error)")
@@ -85,7 +85,7 @@ final class NetworkFailureTests: XCTestCase {
                 do {
                     _ = try await client.sendCommand("testCommand")
                     XCTFail("Connection to invalid path should fail: \(invalidPath)")
-                } catch JanusError.connectionError, JanusError.connectionRequired {
+                } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
                     // Expected
                 } catch {
                     // Other socket errors are also acceptable
@@ -108,13 +108,13 @@ final class NetworkFailureTests: XCTestCase {
         do {
             _ = try await client.sendCommand("testCommand")
             XCTFail("Connection should timeout")
-        } catch JanusError.connectionError(let message) {
+        } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
             // Should timeout quickly or fail immediately in SOCK_DGRAM
             let elapsedTime = Date().timeIntervalSince(startTime)
             XCTAssertLessThan(elapsedTime, 1.0, "Connection should timeout quickly or fail immediately")
-            XCTAssertTrue(message.contains("timeout") || message.contains("Network is down") || message.contains("No such file or directory"), 
+            XCTAssertTrue(error.message.contains("timeout") || error.message.contains("Network is down") || error.message.contains("No such file or directory"), 
                          "Error should indicate timeout, network failure, or socket not found")
-        } catch JanusError.connectionTestFailed {
+        } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
             // Expected in SOCK_DGRAM architecture - connection test fails immediately
         } catch {
             XCTFail("Unexpected error type: \(error)")
@@ -132,9 +132,9 @@ final class NetworkFailureTests: XCTestCase {
             do {
                 _ = try await client.sendCommand("testCommand", args: ["iteration": AnyCodable(i)])
                 XCTFail("Connection should fail on iteration \(i)")
-            } catch JanusError.connectionError, JanusError.connectionRequired {
+            } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
                 // Expected - each attempt should fail cleanly
-            } catch JanusError.connectionTestFailed {
+            } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
                 // Expected in SOCK_DGRAM architecture
             } catch {
                 XCTFail("Unexpected error on iteration \(i): \(error)")
@@ -162,7 +162,7 @@ final class NetworkFailureTests: XCTestCase {
                 do {
                     _ = try await client.sendCommand("testCommand")
                     // Might succeed if we actually have permission, that's okay
-                } catch JanusError.connectionError {
+                } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
                     // Expected - permission denied or path doesn't exist
                 } catch {
                     // Other errors are also acceptable for permission issues
@@ -243,10 +243,10 @@ final class NetworkFailureTests: XCTestCase {
         do {
             _ = try await client.sendCommand("testCommand")
             XCTFail("Should timeout in slow network conditions")
-        } catch JanusError.connectionError {
+        } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
             let elapsedTime = Date().timeIntervalSince(startTime)
             XCTAssertLessThan(elapsedTime, 0.5, "Should timeout quickly in slow conditions")
-        } catch JanusError.connectionTestFailed {
+        } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
             // Expected in SOCK_DGRAM architecture
         } catch {
             XCTFail("Unexpected error in slow network test: \(error)")
@@ -414,7 +414,7 @@ final class NetworkFailureTests: XCTestCase {
             }
         } catch {
             // Client creation might fail due to path validation, which is fine
-            XCTAssertTrue(error is JanusError, "Should be a validation error")
+            XCTAssertTrue(error is JSONRPCError, "Should be a validation error")
         }
     }
     

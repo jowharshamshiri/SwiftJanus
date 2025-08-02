@@ -123,12 +123,12 @@ public final class TimeoutManager {
         onError: @escaping (Error) -> Void
     ) {
         guard timeout > 0 else {
-            onError(JanusError.validationError("Timeout must be positive"))
+            onError(JSONRPCError.create(code: .invalidParams, details: "Timeout must be positive"))
             return
         }
         
         guard !commandId.isEmpty else {
-            onError(JanusError.validationError("Command ID cannot be empty"))
+            onError(JSONRPCError.create(code: .invalidParams, details: "Command ID cannot be empty"))
             return
         }
         
@@ -302,10 +302,10 @@ extension TimeoutManager {
     public func registerTimeoutWithErrorCompletion(
         commandId: String,
         timeout: TimeInterval,
-        completion: @escaping (Result<Void, JanusError>) -> Void
+        completion: @escaping (Result<Void, JSONRPCError>) -> Void
     ) {
         registerTimeout(commandId: commandId, timeout: timeout) {
-            completion(.failure(JanusError.timeout("Command \(commandId) timed out after \(timeout) seconds")))
+            completion(.failure(JSONRPCError.create(code: .handlerTimeout, details: "Command \(commandId) timed out after \(timeout) seconds")))
         }
     }
 }

@@ -2,16 +2,14 @@ import Foundation
 import ArgumentParser
 import SwiftJanus
 
-struct StandardError: TextOutputStream {
-    func write(_ string: String) {
-        fputs(string, stderr)
-    }
-}
-
-var standardError = StandardError()
-
-@main
 struct JanusDgram: AsyncParsableCommand {
+    struct StandardError: TextOutputStream {
+        func write(_ string: String) {
+            fputs(string, stderr)
+        }
+    }
+    
+    static var standardError = StandardError()
     static let configuration = CommandConfiguration(
         abstract: "Unified SOCK_DGRAM Unix Socket Process"
     )
@@ -41,8 +39,11 @@ struct JanusDgram: AsyncParsableCommand {
     var channel: String = "test"
     
     mutating func run() async throws {
+        print("DEBUG: Starting run() function")
+        
         // Load Manifest if provided
         if let specPath = spec {
+            print("DEBUG: Loading spec from \(specPath)")
             do {
                 let specURL = URL(fileURLWithPath: specPath)
                 let specData = try Data(contentsOf: specURL)
@@ -51,19 +52,24 @@ struct JanusDgram: AsyncParsableCommand {
                 print("✅ Loaded Manifest from: \(specPath)")
             } catch {
                 print("❌ Failed to load Manifest from \(specPath): \(error)")
-                JanusDgram.exit(withError: ExitCode.failure)
-                return
+                throw ExitCode.failure
             }
+        } else {
+            print("DEBUG: No spec provided")
         }
         
         if listen {
+            print("DEBUG: Starting listener")
             try listenForDatagrams()
         } else if let target = sendTo {
+            print("DEBUG: Sending to target: \(target)")
             try await sendDatagram(to: target)
         } else {
             print("Usage: either --listen or --send-to required")
-            JanusDgram.exit(withError: ExitCode.validationFailure)
+            throw ExitCode.validationFailure
         }
+        
+        print("DEBUG: run() function completed")
     }
     
     func listenForDatagrams() throws {
@@ -75,7 +81,7 @@ struct JanusDgram: AsyncParsableCommand {
         // Create SOCK_DGRAM socket
         let socketFD = Darwin.socket(AF_UNIX, SOCK_DGRAM, 0)
         guard socketFD != -1 else {
-            throw JanusError.socketCreationFailed("Failed to create socket")
+            throw JSONRPCError.create(code: .socketError, details: "Failed to create socket")
         }
         
         var addr = sockaddr_un()
@@ -97,7 +103,7 @@ struct JanusDgram: AsyncParsableCommand {
         
         guard bindResult == 0 else {
             Darwin.close(socketFD)
-            throw JanusError.bindFailed("Failed to bind socket")
+            throw JSONRPCError.create(code: .socketError, details: "Failed to bind socket")
         }
         
         defer {
@@ -145,22 +151,22 @@ struct JanusDgram: AsyncParsableCommand {
         print("Sending SOCK_DGRAM to: \(target)")
         
         do {
+            print("Creating JanusClient...")
             let client = try await JanusClient(socketPath: target, channelId: "swift-client")
+            print("JanusClient created successfully")
             
             let args: [String: AnyCodable] = ["message": AnyCodable(message)]
             
             // Send command using high-level API
+            print("Sending command: \(command)")
             let response = try await client.sendCommand(command, args: args, timeout: 5.0)
             print("Response: Success=\(response.success), Result=\(response.result ?? [:])")
             
-        } catch JanusError.connectionTestFailed(let message) {
-            print("Connection failed: \(message)", to: &standardError)
-            throw ExitCode.failure
-        } catch JanusError.timeout(let message) {
-            print("Timeout: \(message)", to: &standardError)
+        } catch let error as JSONRPCError {
+            print("JSONRPCError: \(error.errorDescription)", to: &Self.standardError)
             throw ExitCode.failure
         } catch {
-            print("Error: \(error)", to: &standardError)
+            print("Generic error: \(error)", to: &Self.standardError)
             throw ExitCode.failure
         }
     }
@@ -324,7 +330,7 @@ struct JanusDgram: AsyncParsableCommand {
         // Check for required arguments
         for (argName, argSpec) in specArgs {
             if argSpec.required && (args?[argName] == nil) {
-                throw JanusError.missingRequiredArgument("Required argument '\(argName)' is missing")
+                throw JSONRPCError.create(code: .invalidParams, details: "Required argument '\(argName)' is missing")
             }
         }
         
@@ -345,27 +351,27 @@ struct JanusDgram: AsyncParsableCommand {
         switch spec.type {
         case .string:
             guard value.value is String else {
-                throw JanusError.invalidArgument(name, "must be a string")
+                throw JSONRPCError.create(code: .invalidParams, details: "Argument '\(name)' must be a string")
             }
         case .number:
             guard value.value is Double || value.value is Float || value.value is Int else {
-                throw JanusError.invalidArgument(name, "must be a number")
+                throw JSONRPCError.create(code: .invalidParams, details: "Argument '\(name)' must be a number")
             }
         case .integer:
             guard value.value is Int else {
-                throw JanusError.invalidArgument(name, "must be an integer")
+                throw JSONRPCError.create(code: .invalidParams, details: "Argument '\(name)' must be an integer")
             }
         case .boolean:
             guard value.value is Bool else {
-                throw JanusError.invalidArgument(name, "must be a boolean")
+                throw JSONRPCError.create(code: .invalidParams, details: "Argument '\(name)' must be a boolean")
             }
         case .array:
             guard value.value is Array<Any> else {
-                throw JanusError.invalidArgument(name, "must be an array")
+                throw JSONRPCError.create(code: .invalidParams, details: "Argument '\(name)' must be an array")
             }
         case .object:
             guard value.value is Dictionary<String, Any> else {
-                throw JanusError.invalidArgument(name, "must be an object")
+                throw JSONRPCError.create(code: .invalidParams, details: "Argument '\(name)' must be an object")
             }
         case .null:
             // Null values are always acceptable
@@ -375,8 +381,8 @@ struct JanusDgram: AsyncParsableCommand {
             break
         }
     }
-}
-
-func generateId() -> String {
-    return String(Date().timeIntervalSince1970 * 1_000_000)
+    
+    private func generateId() -> String {
+        return String(Date().timeIntervalSince1970 * 1_000_000)
+    }
 }

@@ -2,7 +2,6 @@
 // Comprehensive security validation matching Go/Rust/TypeScript implementations
 
 import Foundation
-import RegexBuilder
 
 /// Security validation framework implementing all 25+ security mechanisms
 /// Matches Go, Rust, and TypeScript implementations exactly for cross-language parity
@@ -36,23 +35,23 @@ public final class SecurityValidator {
     public static func validateSocketPath(_ path: String) throws {
         // 1. Path length validation
         guard path.count <= maxSocketPathLength else {
-            throw JanusError.securityViolation("Socket path exceeds maximum length of \(maxSocketPathLength) characters")
+            throw JSONRPCError.create(code: .securityViolation, details: "Socket path exceeds maximum length of \(maxSocketPathLength) characters")
         }
         
         // 2. Must be absolute path
         guard path.hasPrefix("/") else {
-            throw JanusError.securityViolation("Socket path must be absolute")
+            throw JSONRPCError.create(code: .securityViolation, details: "Socket path must be absolute")
         }
         
         // 3. Check for path traversal sequences
         if path.contains("../") || path.contains("..\\") {
-            throw JanusError.securityViolation("Path traversal detected in socket path")
+            throw JSONRPCError.create(code: .securityViolation, details: "Path traversal detected in socket path")
         }
         
         // 4. Validate path characters
         let range = NSRange(location: 0, length: path.utf16.count)
         guard socketPathPattern.firstMatch(in: path, range: range) != nil else {
-            throw JanusError.securityViolation("Socket path contains invalid characters")
+            throw JSONRPCError.create(code: .securityViolation, details: "Socket path contains invalid characters")
         }
         
         // 5. Check allowed directories
@@ -60,12 +59,12 @@ public final class SecurityValidator {
         let directory = pathURL.deletingLastPathComponent().path
         
         guard allowedDirectories.contains(where: { directory.hasPrefix($0) }) else {
-            throw JanusError.securityViolation("Socket path not in allowed directory")
+            throw JSONRPCError.create(code: .securityViolation, details: "Socket path not in allowed directory")
         }
         
         // 6. Check for null bytes
         if path.contains("\0") {
-            throw JanusError.securityViolation("Socket path contains null bytes")
+            throw JSONRPCError.create(code: .securityViolation, details: "Socket path contains null bytes")
         }
     }
     
@@ -75,23 +74,23 @@ public final class SecurityValidator {
     public static func validateChannelName(_ channelName: String) throws {
         // 1. Length validation
         guard !channelName.isEmpty else {
-            throw JanusError.securityViolation("Channel name cannot be empty")
+            throw JSONRPCError.create(code: .securityViolation, details: "Channel name cannot be empty")
         }
         
         guard channelName.count <= maxChannelNameLength else {
-            throw JanusError.securityViolation("Channel name exceeds maximum length of \(maxChannelNameLength) characters")
+            throw JSONRPCError.create(code: .securityViolation, details: "Channel name exceeds maximum length of \(maxChannelNameLength) characters")
         }
         
         // 2. Character validation (alphanumeric + hyphen + underscore only)
         let range = NSRange(location: 0, length: channelName.utf16.count)
         guard channelNamePattern.firstMatch(in: channelName, range: range) != nil else {
-            throw JanusError.securityViolation("Channel name contains invalid characters (only alphanumeric, hyphen, underscore allowed)")
+            throw JSONRPCError.create(code: .securityViolation, details: "Channel name contains invalid characters (only alphanumeric, hyphen, underscore allowed)")
         }
         
         // 3. Check for reserved channel names
         let reservedChannels: Set<String> = ["system", "admin", "root", "test"]
         if reservedChannels.contains(channelName.lowercased()) {
-            throw JanusError.securityViolation("Channel name '\(channelName)' is reserved")
+            throw JSONRPCError.create(code: .securityViolation, details: "Channel name '\(channelName)' is reserved")
         }
     }
     
@@ -101,24 +100,24 @@ public final class SecurityValidator {
     public static func validateCommandName(_ commandName: String) throws {
         // 1. Length validation
         guard !commandName.isEmpty else {
-            throw JanusError.securityViolation("Command name cannot be empty")
+            throw JSONRPCError.create(code: .securityViolation, details: "Command name cannot be empty")
         }
         
         guard commandName.count <= maxCommandNameLength else {
-            throw JanusError.securityViolation("Command name exceeds maximum length of \(maxCommandNameLength) characters")
+            throw JSONRPCError.create(code: .securityViolation, details: "Command name exceeds maximum length of \(maxCommandNameLength) characters")
         }
         
         // 2. Character validation (alphanumeric + hyphen + underscore only)
         let range = NSRange(location: 0, length: commandName.utf16.count)
         guard commandNamePattern.firstMatch(in: commandName, range: range) != nil else {
-            throw JanusError.securityViolation("Command name contains invalid characters (only alphanumeric, hyphen, underscore allowed)")
+            throw JSONRPCError.create(code: .securityViolation, details: "Command name contains invalid characters (only alphanumeric, hyphen, underscore allowed)")
         }
         
         // 3. Check for dangerous command patterns
         let dangerousPatterns = ["eval", "exec", "system", "shell", "rm", "delete", "drop"]
         for pattern in dangerousPatterns {
             if commandName.lowercased().contains(pattern) {
-                throw JanusError.securityViolation("Command name contains dangerous pattern: \(pattern)")
+                throw JSONRPCError.create(code: .securityViolation, details: "Command name contains dangerous pattern: \(pattern)")
             }
         }
     }
@@ -132,14 +131,14 @@ public final class SecurityValidator {
         // 1. Serialize to check size
         let jsonData = try JSONEncoder().encode(args)
         guard jsonData.count <= maxArgsDataSize else {
-            throw JanusError.securityViolation("Command arguments exceed maximum size of \(maxArgsDataSize) bytes")
+            throw JSONRPCError.create(code: .securityViolation, details: "Command arguments exceed maximum size of \(maxArgsDataSize) bytes")
         }
         
         // 2. Check for dangerous argument names
         let dangerousArgs = ["__proto__", "constructor", "prototype", "eval", "function"]
         for argName in args.keys {
             if dangerousArgs.contains(argName.lowercased()) {
-                throw JanusError.securityViolation("Dangerous argument name: \(argName)")
+                throw JSONRPCError.create(code: .securityViolation, details: "Dangerous argument name: \(argName)")
             }
         }
         
@@ -157,7 +156,7 @@ public final class SecurityValidator {
             
             for pattern in sqlPatterns {
                 if lowerValue.contains(pattern) {
-                    throw JanusError.securityViolation("Argument '\(key)' contains potentially dangerous pattern: \(pattern)")
+                    throw JSONRPCError.create(code: .securityViolation, details: "Argument '\(key)' contains potentially dangerous pattern: \(pattern)")
                 }
             }
             
@@ -165,7 +164,7 @@ public final class SecurityValidator {
             let scriptPatterns = ["<script", "javascript:", "vbscript:", "onload=", "onerror="]
             for pattern in scriptPatterns {
                 if lowerValue.contains(pattern) {
-                    throw JanusError.securityViolation("Argument '\(key)' contains script injection pattern: \(pattern)")
+                    throw JSONRPCError.create(code: .securityViolation, details: "Argument '\(key)' contains script injection pattern: \(pattern)")
                 }
             }
         }
@@ -176,7 +175,7 @@ public final class SecurityValidator {
     /// Validate message size (matches Go implementation exactly)
     public static func validateMessageSize(_ data: Data) throws {
         guard data.count <= maxMessageSize else {
-            throw JanusError.securityViolation("Message size \(data.count) exceeds maximum of \(maxMessageSize) bytes")
+            throw JSONRPCError.create(code: .securityViolation, details: "Message size \(data.count) exceeds maximum of \(maxMessageSize) bytes")
         }
     }
     
@@ -184,12 +183,12 @@ public final class SecurityValidator {
     public static func validateMessageContent(_ data: Data) throws {
         // 1. Check for null bytes in message content
         guard !data.contains(0) else {
-            throw JanusError.securityViolation("Message contains null bytes")
+            throw JSONRPCError.create(code: .securityViolation, details: "Message contains null bytes")
         }
         
         // 2. Validate UTF-8 encoding
         guard String(data: data, encoding: .utf8) != nil else {
-            throw JanusError.securityViolation("Message contains invalid UTF-8 encoding")
+            throw JSONRPCError.create(code: .securityViolation, details: "Message contains invalid UTF-8 encoding")
         }
         
         // 3. Basic JSON structure validation
@@ -198,10 +197,10 @@ public final class SecurityValidator {
                 let jsonObject = try JSONSerialization.jsonObject(with: data, options: [])
                 // Ensure it's a JSON object (dictionary), not just any JSON
                 guard jsonObject is [String: Any] else {
-                    throw JanusError.securityViolation("Message must be a JSON object")
+                    throw JSONRPCError.create(code: .securityViolation, details: "Message must be a JSON object")
                 }
             } catch {
-                throw JanusError.securityViolation("Message contains invalid JSON structure")
+                throw JSONRPCError.create(code: .securityViolation, details: "Message contains invalid JSON structure")
             }
         }
     }
@@ -210,12 +209,12 @@ public final class SecurityValidator {
     public static func validateStringContent(_ string: String) throws {
         // Check for null bytes
         guard !string.contains("\0") else {
-            throw JanusError.securityViolation("String contains null bytes")
+            throw JSONRPCError.create(code: .securityViolation, details: "String contains null bytes")
         }
         
         // Validate UTF-8 encoding (Swift strings are already UTF-8, but check for valid encoding)
         guard string.data(using: .utf8) != nil else {
-            throw JanusError.securityViolation("String contains invalid UTF-8")
+            throw JSONRPCError.create(code: .securityViolation, details: "String contains invalid UTF-8")
         }
     }
     
@@ -224,18 +223,18 @@ public final class SecurityValidator {
     /// Validate command ID format and security
     public static func validateCommandId(_ commandId: String) throws {
         guard !commandId.isEmpty else {
-            throw JanusError.securityViolation("Command ID cannot be empty")
+            throw JSONRPCError.create(code: .securityViolation, details: "Command ID cannot be empty")
         }
         
         guard commandId.count <= 64 else {
-            throw JanusError.securityViolation("Command ID exceeds maximum length of 64 characters")
+            throw JSONRPCError.create(code: .securityViolation, details: "Command ID exceeds maximum length of 64 characters")
         }
         
         // Must be alphanumeric or UUID-like format
         let uuidPattern = try! NSRegularExpression(pattern: "^[a-zA-Z0-9-]+$")
         let range = NSRange(location: 0, length: commandId.utf16.count)
         guard uuidPattern.firstMatch(in: commandId, range: range) != nil else {
-            throw JanusError.securityViolation("Command ID contains invalid characters")
+            throw JSONRPCError.create(code: .securityViolation, details: "Command ID contains invalid characters")
         }
     }
     
@@ -247,7 +246,7 @@ public final class SecurityValidator {
         let range = NSRange(location: 0, length: uuid.utf16.count)
         
         guard uuidRegex.firstMatch(in: uuid, range: range) != nil else {
-            throw JanusError.securityViolation("Invalid UUID format: \(uuid)")
+            throw JSONRPCError.create(code: .securityViolation, details: "Invalid UUID format: \(uuid)")
         }
     }
     
@@ -259,7 +258,7 @@ public final class SecurityValidator {
         iso8601Formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         
         guard iso8601Formatter.date(from: timestamp) != nil else {
-            throw JanusError.securityViolation("Invalid ISO 8601 timestamp format: \(timestamp)")
+            throw JSONRPCError.create(code: .securityViolation, details: "Invalid ISO 8601 timestamp format: \(timestamp)")
         }
     }
     
@@ -271,11 +270,11 @@ public final class SecurityValidator {
         let maxTimeout: TimeInterval = 3600.0 // 1 hour maximum
         
         guard timeout >= minTimeout else {
-            throw JanusError.securityViolation("Timeout \(timeout) is below minimum of \(minTimeout) seconds")  
+            throw JSONRPCError.create(code: .securityViolation, details: "Timeout \(timeout) is below minimum of \(minTimeout) seconds")  
         }
         
         guard timeout <= maxTimeout else {
-            throw JanusError.securityViolation("Timeout \(timeout) exceeds maximum of \(maxTimeout) seconds")
+            throw JSONRPCError.create(code: .securityViolation, details: "Timeout \(timeout) exceeds maximum of \(maxTimeout) seconds")
         }
     }
     
@@ -305,19 +304,19 @@ public final class SecurityValidator {
         limits: ResourceLimits = ResourceLimits()
     ) throws {
         guard activeConnections <= limits.maxActiveConnections else {
-            throw JanusError.securityViolation("Active connections (\(activeConnections)) exceed limit (\(limits.maxActiveConnections))")
+            throw JSONRPCError.create(code: .securityViolation, details: "Active connections (\(activeConnections)) exceed limit (\(limits.maxActiveConnections))")
         }
         
         guard commandHandlers <= limits.maxCommandHandlers else {
-            throw JanusError.securityViolation("Command handlers (\(commandHandlers)) exceed limit (\(limits.maxCommandHandlers))")
+            throw JSONRPCError.create(code: .securityViolation, details: "Command handlers (\(commandHandlers)) exceed limit (\(limits.maxCommandHandlers))")
         }
         
         guard pendingRequests <= limits.maxPendingRequests else {
-            throw JanusError.securityViolation("Pending requests (\(pendingRequests)) exceed limit (\(limits.maxPendingRequests))")
+            throw JSONRPCError.create(code: .securityViolation, details: "Pending requests (\(pendingRequests)) exceed limit (\(limits.maxPendingRequests))")
         }
         
         guard memoryUsage <= limits.maxMemoryUsage else {
-            throw JanusError.securityViolation("Memory usage (\(memoryUsage) bytes) exceeds limit (\(limits.maxMemoryUsage) bytes)")
+            throw JSONRPCError.create(code: .securityViolation, details: "Memory usage (\(memoryUsage) bytes) exceeds limit (\(limits.maxMemoryUsage) bytes)")
         }
     }
     
@@ -326,7 +325,7 @@ public final class SecurityValidator {
     /// Validate channel isolation rules
     public static func validateChannelIsolation(requestedChannel: String, allowedChannels: Set<String>) throws {
         guard allowedChannels.contains(requestedChannel) else {
-            throw JanusError.securityViolation("Access denied to channel '\(requestedChannel)' - channel isolation violation")
+            throw JSONRPCError.create(code: .securityViolation, details: "Access denied to channel '\(requestedChannel)' - channel isolation violation")
         }
     }
     
@@ -335,7 +334,7 @@ public final class SecurityValidator {
         let reservedChannels: Set<String> = ["system", "admin", "root", "internal", "__proto__", "constructor"]
         
         guard !reservedChannels.contains(channelId.lowercased()) else {
-            throw JanusError.securityViolation("Channel ID '\(channelId)' is reserved and cannot be used")
+            throw JSONRPCError.create(code: .securityViolation, details: "Channel ID '\(channelId)' is reserved and cannot be used")
         }
     }
     
@@ -359,7 +358,7 @@ public final class SecurityValidator {
         
         // Allow 5-minute clock skew
         guard timeDiff <= 300 else {
-            throw JanusError.securityViolation("Command timestamp is too far from current time")
+            throw JSONRPCError.create(code: .securityViolation, details: "Command timestamp is too far from current time")
         }
     }
     
@@ -372,13 +371,13 @@ public final class SecurityValidator {
         
         // Too many path components could indicate an attack
         guard components.count <= 10 else {
-            throw JanusError.securityViolation("Socket path has too many components")
+            throw JSONRPCError.create(code: .securityViolation, details: "Socket path has too many components")
         }
         
         // Check for excessively long component names
         for component in components {
             guard component.count <= 50 else {
-                throw JanusError.securityViolation("Socket path component exceeds maximum length")
+                throw JSONRPCError.create(code: .securityViolation, details: "Socket path component exceeds maximum length")
             }
         }
     }

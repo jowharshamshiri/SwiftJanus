@@ -1,7 +1,7 @@
 import Foundation
 
 /// Command handler function type for SOCK_DGRAM server
-public typealias JanusCommandHandler = (JanusCommand) -> Result<[String: AnyCodable], JanusError>
+public typealias JanusCommandHandler = (JanusCommand) -> Result<[String: AnyCodable], JSONRPCError>
 
 /// Event handler function type for server events
 public typealias ServerEventHandler = (Any) -> Void
@@ -178,7 +178,7 @@ public class JanusServer {
         // Create SOCK_DGRAM socket
         let socketFD = Darwin.socket(AF_UNIX, SOCK_DGRAM, 0)
         guard socketFD != -1 else {
-            throw JanusError.socketCreationFailed("Failed to create socket")
+            throw JSONRPCError.create(code: .socketError, details: "Failed to create socket")
         }
         
         var addr = sockaddr_un()
@@ -200,7 +200,7 @@ public class JanusServer {
         
         guard bindResult == 0 else {
             Darwin.close(socketFD)
-            throw JanusError.bindFailed("Failed to bind socket")  
+            throw JSONRPCError.create(code: .socketError, details: "Failed to bind socket")  
         }
         
         defer {

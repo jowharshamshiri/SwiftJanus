@@ -393,12 +393,12 @@ final class ProtocolTests: XCTestCase {
     func testErrorPropagation() throws {
         // Test that errors are properly structured for transmission
         let testErrors = [
-            JanusError.invalidChannel("test channel"),
-            JanusError.unknownCommand("test command"),
-            JanusError.invalidArgument("test args", "reason"),
-            JanusError.commandTimeout("cmd-123", 30.0),
-            JanusError.resourceLimit("too many"),
-            JanusError.invalidSocketPath("bad path")
+            JSONRPCError.create(code: .invalidParams, details: "Invalid channel: test channel"),
+            JSONRPCError.create(code: .methodNotFound, details: "Unknown command: test command"),
+            JSONRPCError.create(code: .invalidParams, details: "Invalid argument 'test args': reason"),
+            JSONRPCError.create(code: .handlerTimeout, details: "Command 'cmd-123' timed out after 30.0 seconds"),
+            JSONRPCError.create(code: .resourceLimitExceeded, details: "Resource limit exceeded: too many"),
+            JSONRPCError.create(code: .invalidParams, details: "Invalid socket path: bad path")
         ]
         
         for testError in testErrors {

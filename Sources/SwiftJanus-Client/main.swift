@@ -1,7 +1,6 @@
 import Foundation
 import SwiftJanus
 
-@main
 struct SwiftJanusClient {
     static func main() async throws {
         // Parse command line arguments
@@ -83,4 +82,8 @@ struct SwiftJanusClient {
         
         print("All Swift client tests completed successfully! 🎉")
     }
+}
+
+Task {
+    try await SwiftJanusClient.main()
 }

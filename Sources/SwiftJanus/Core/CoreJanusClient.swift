@@ -17,13 +17,13 @@ public class CoreJanusClient {
     public func sendDatagram(_ data: Data, responseSocketPath: String) async throws -> Data {
         // Validate message size
         guard data.count <= maxMessageSize else {
-            throw JanusError.messageTooLarge(data.count, maxMessageSize)
+            throw JSONRPCError.create(code: .messageFramingError, details: "Message too large: \(data.count) bytes (limit: \(maxMessageSize) bytes)")
         }
         
         // Create response socket for receiving replies
         let responseSocketFD = socket(AF_UNIX, SOCK_DGRAM, 0)
         guard responseSocketFD != -1 else {
-            throw JanusError.socketCreationFailed("Failed to create response socket")
+            throw JSONRPCError.create(code: .socketError, details: "Failed to create response socket")
         }
         
         defer { close(responseSocketFD) }
@@ -48,7 +48,7 @@ public class CoreJanusClient {
         }
         
         guard bindResult == 0 else {
-            throw JanusError.bindFailed("Failed to bind response socket")
+            throw JSONRPCError.create(code: .socketError, details: "Failed to bind response socket")
         }
         
         // Clean up response socket file on completion
@@ -59,7 +59,7 @@ public class CoreJanusClient {
         // Create client socket for sending
         let clientSocketFD = socket(AF_UNIX, SOCK_DGRAM, 0)
         guard clientSocketFD != -1 else {
-            throw JanusError.socketCreationFailed("Failed to create client socket")
+            throw JSONRPCError.create(code: .socketError, details: "Failed to create client socket")
         }
         
         defer { close(clientSocketFD) }
@@ -88,9 +88,9 @@ public class CoreJanusClient {
         guard sendResult != -1 else {
             let errorCode = errno
             if errorCode == ENOENT || errorCode == ECONNREFUSED {
-                throw JanusError.connectionError("No such file or directory (target socket does not exist)")
+                throw JSONRPCError.create(code: .serverError, details: "No such file or directory (target socket does not exist)")
             } else {
-                throw JanusError.sendFailed("Failed to send datagram: errno \(errorCode)")
+                throw JSONRPCError.create(code: .socketError, details: "Failed to send datagram: errno \(errorCode)")
             }
         }
         
@@ -104,13 +104,13 @@ public class CoreJanusClient {
     public func sendDatagramNoResponse(_ data: Data) async throws {
         // Validate message size
         guard data.count <= maxMessageSize else {
-            throw JanusError.messageTooLarge(data.count, maxMessageSize)
+            throw JSONRPCError.create(code: .messageFramingError, details: "Message too large: \(data.count) bytes (limit: \(maxMessageSize) bytes)")
         }
         
         // Create client socket for sending
         let clientSocketFD = socket(AF_UNIX, SOCK_DGRAM, 0)
         guard clientSocketFD != -1 else {
-            throw JanusError.socketCreationFailed("Failed to create client socket")
+            throw JSONRPCError.create(code: .socketError, details: "Failed to create client socket")
         }
         
         defer { close(clientSocketFD) }
@@ -139,9 +139,9 @@ public class CoreJanusClient {
         guard sendResult != -1 else {
             let errorCode = errno
             if errorCode == ENOENT || errorCode == ECONNREFUSED {
-                throw JanusError.connectionError("No such file or directory (target socket does not exist)")
+                throw JSONRPCError.create(code: .serverError, details: "No such file or directory (target socket does not exist)")
             } else {
-                throw JanusError.sendFailed("Failed to send datagram: errno \(errorCode)")
+                throw JSONRPCError.create(code: .socketError, details: "Failed to send datagram: errno \(errorCode)")
             }
         }
     }
@@ -153,7 +153,7 @@ public class CoreJanusClient {
         // Create client socket for testing
         let clientSocketFD = socket(AF_UNIX, SOCK_DGRAM, 0)
         guard clientSocketFD != -1 else {
-            throw JanusError.socketCreationFailed("Failed to create test socket")
+            throw JSONRPCError.create(code: .socketError, details: "Failed to create test socket")
         }
         
         defer { close(clientSocketFD) }
@@ -180,7 +180,7 @@ public class CoreJanusClient {
         }
         
         guard sendResult != -1 else {
-            throw JanusError.connectionTestFailed("Test datagram send failed")
+            throw JSONRPCError.create(code: .serverError, details: "Test datagram send failed")
         }
     }
     
@@ -200,9 +200,9 @@ public class CoreJanusClient {
                 let receivedBytes = recv(socketFD, &buffer, self.maxMessageSize, 0)
                 
                 if receivedBytes == -1 {
-                    continuation.resume(throwing: JanusError.receiveFailed("Failed to receive response"))
+                    continuation.resume(throwing: JSONRPCError.create(code: .socketError, details: "Failed to receive response"))
                 } else if receivedBytes == 0 {
-                    continuation.resume(throwing: JanusError.connectionClosed("Socket closed"))
+                    continuation.resume(throwing: JSONRPCError.create(code: .socketError, details: "Socket closed"))
                 } else {
                     let data = Data(buffer.prefix(receivedBytes))
                     continuation.resume(returning: data)
@@ -219,11 +219,11 @@ public class CoreJanusClient {
             
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                throw JanusError.timeout("Operation timed out after \\(timeout) seconds")
+                throw JSONRPCError.create(code: .handlerTimeout, details: "Operation timed out after \\(timeout) seconds")
             }
             
             guard let result = try await group.next() else {
-                throw JanusError.timeout("Task group failed")
+                throw JSONRPCError.create(code: .internalError, details: "Task group failed")
             }
             
             group.cancelAll()

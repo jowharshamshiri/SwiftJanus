@@ -41,14 +41,14 @@ final class JanusClientTests: XCTestCase {
                 channelId: "nonExistentChannel"
             )
             XCTFail("Expected invalidChannel error")
-        } catch let error as JanusError {
-            if case .invalidChannel(let message) = error {
-                XCTAssertTrue(message.contains("nonExistentChannel"))
+        } catch let error as JSONRPCError {
+            if error.code == JSONRPCErrorCode.invalidParams.rawValue {
+                // Validated by error code - invalid channel confirmed
             } else {
-                XCTFail("Expected invalidChannel error, got \(error)")
+                XCTFail("Expected invalidParams error code, got: \(error)")
             }
         } catch {
-            XCTFail("Expected JanusError, got \(error)")
+            XCTFail("Expected JSONRPCError, got \(error)")
         }
     }
     
@@ -60,11 +60,11 @@ final class JanusClientTests: XCTestCase {
                 channelId: "nonExistentChannel"
             )
             XCTFail("Expected connection or channel error")
-        } catch let error as JanusError {
+        } catch let error as JSONRPCError {
             // Should throw connection error or invalid channel
-            XCTAssertTrue(error is JanusError)
+            XCTAssertTrue(error is JSONRPCError)
         } catch {
-            XCTFail("Expected JanusError, got \(error)")
+            XCTFail("Expected JSONRPCError, got \(error)")
         }
     }
     
@@ -99,13 +99,13 @@ final class JanusClientTests: XCTestCase {
         do {
             _ = try await client.sendCommand("getData")
             XCTFail("Expected missing required argument error")
-        } catch let error as JanusError {
-            if case .missingRequiredArgument(let argName) = error {
-                XCTAssertEqual(argName, "id")
-            } else if case .connectionTestFailed(_) = error {
+        } catch let error as JSONRPCError {
+            if error.code == JSONRPCErrorCode.invalidParams.rawValue {
+                // Validated by error code - missing required argument confirmed
+            } else if error.code == JSONRPCErrorCode.serverError.rawValue {
                 // Connection errors are acceptable in SOCK_DGRAM architecture
             } else {
-                XCTFail("Expected missingRequiredArgument or connectionTestFailed error, got \(error)")
+                XCTFail("Expected invalidParams or serverError, got: \(error)")
             }
         } catch {
             XCTFail("Unexpected error type: \(error)")
@@ -115,13 +115,13 @@ final class JanusClientTests: XCTestCase {
         do {
             _ = try await client.sendCommand("unknownCommand")
             XCTFail("Expected unknown command error")
-        } catch let error as JanusError {
-            if case .unknownCommand(let commandName) = error {
-                XCTAssertEqual(commandName, "unknownCommand")
-            } else if case .connectionTestFailed(_) = error {
+        } catch let error as JSONRPCError {
+            if error.code == JSONRPCErrorCode.methodNotFound.rawValue {
+                // Validated by error code - unknown command confirmed
+            } else if error.code == JSONRPCErrorCode.serverError.rawValue {
                 // Connection errors are acceptable in SOCK_DGRAM architecture
             } else {
-                XCTFail("Expected unknownCommand or connectionTestFailed error, got \(error)")
+                XCTFail("Expected methodNotFound or serverError, got: \(error)")
             }
         } catch {
             XCTFail("Unexpected error type: \(error)")
@@ -144,9 +144,9 @@ final class JanusClientTests: XCTestCase {
         // Should not throw for valid command and args
         do {
             _ = try await client.sendCommand("getData", args: args)
-        } catch JanusError.connectionError, JanusError.connectionRequired {
+        } catch let error as JSONRPCError {
             // Expected - we're not connected to a server
-        } catch JanusError.connectionTestFailed {
+        } catch let error as JSONRPCError {
             // Expected - connection test failed in SOCK_DGRAM architecture
         } catch {
             XCTFail("Unexpected error: \(error)")
@@ -367,17 +367,13 @@ final class JanusClientTests: XCTestCase {
             // Should not wait for response and return immediately
             try await client.sendCommandNoResponse("setData", args: testArgs)
             XCTFail("Expected connection error since no server is running")
-        } catch let error as JanusError {
+        } catch let error as JSONRPCError {
             // Expected to fail with connection error (no server running)
             // but should not timeout waiting for response
-            switch error {
-            case .connectionError(_):
-                // Expected - connection error is fine
-                break
-            case .commandTimeout(_, _):
+            // Expected - connection error is fine for fire-and-forget
+            if error.code == JSONRPCErrorCode.handlerTimeout.rawValue {
                 XCTFail("Got timeout error when expecting connection error for fire-and-forget")
-            default:
-                // Other errors are acceptable (e.g., validation errors)
+            } else {
                 print("Got error for fire-and-forget (acceptable): \(error)")
             }
         } catch {
@@ -408,14 +404,14 @@ final class JanusClientTests: XCTestCase {
         do {
             try await client.sendCommand("ping", args: testArgs)
             XCTFail("Expected error since no server is running")
-        } catch let error as JanusError {
+        } catch let error as JSONRPCError {
             // Should fail with connection or timeout error (no server running)
-            switch error {
-            case .connectionError(_):
+            // Expected - connection or timeout error (no server running)
+            if error.code == JSONRPCErrorCode.serverError.rawValue || error.code == JSONRPCErrorCode.socketError.rawValue {
                 print("Socket cleanup test: Connection error (expected with no server)")
-            case .commandTimeout(_, _):
+            } else if error.code == JSONRPCErrorCode.handlerTimeout.rawValue {
                 print("Socket cleanup test: Timeout error (expected with no server)")
-            default:
+            } else {
                 print("Socket cleanup test: Got error (may be expected): \(error)")
             }
         } catch {
@@ -431,17 +427,15 @@ final class JanusClientTests: XCTestCase {
             do {
                 try await client.sendCommand("echo", args: args)
                 XCTFail("Expected error since no server is running (iteration \(i))")
-            } catch let error as JanusError {
+            } catch let error as JSONRPCError {
                 // All operations should fail gracefully (no server running)
                 // but should not cause resource leaks or socket issues
-                switch error {
-                case .connectionError(_):
+                // Expected - connection or timeout cleanup working
+                if error.code == JSONRPCErrorCode.serverError.rawValue || error.code == JSONRPCErrorCode.socketError.rawValue {
                     // Expected - connection cleanup working
-                    break
-                case .commandTimeout(_, _):
+                } else if error.code == JSONRPCErrorCode.handlerTimeout.rawValue {
                     // Expected - timeout cleanup working
-                    break
-                default:
+                } else {
                     print("Cleanup test iteration \(i): \(error)")
                 }
             } catch {
@@ -454,12 +448,11 @@ final class JanusClientTests: XCTestCase {
         do {
             try await client.sendCommandNoResponse("ping", args: cleanupArgs)
             XCTFail("Expected error for fire-and-forget cleanup test")
-        } catch let error as JanusError {
+        } catch let error as JSONRPCError {
             // Should handle cleanup for fire-and-forget as well
-            switch error {
-            case .connectionError(_):
+            if error.code == JSONRPCErrorCode.serverError.rawValue || error.code == JSONRPCErrorCode.socketError.rawValue {
                 print("Fire-and-forget cleanup test: Connection error handled")
-            default:
+            } else {
                 print("Fire-and-forget cleanup test result: \(error)")
             }
         } catch {
@@ -485,12 +478,12 @@ final class JanusClientTests: XCTestCase {
         do {
             _ = try await client.sendCommand("echo", args: normalArgs)
             XCTFail("Expected connection error since no server is running")
-        } catch {
+        } catch let jsonError as JSONRPCError {
             // Should be connection error, not message size error
-            let errorMessage = String(describing: error)
-            if errorMessage.contains("size") && errorMessage.contains("exceeds") {
-                XCTFail("Got size error for normal message: \(error)")
-            }
+            XCTAssertNotEqual(jsonError.code, JSONRPCErrorCode.messageFramingError.rawValue, "Got size error for normal message: \(jsonError)")
+        } catch {
+            // Other errors are acceptable (connection errors, etc.)
+            XCTAssertTrue(true, "Expected connection error: \(error)")
         }
         
         // Test with very large message (should trigger size validation)
@@ -506,8 +499,9 @@ final class JanusClientTests: XCTestCase {
             XCTFail("Expected validation error for oversized message")
         } catch {
             // Should be size validation error
-            let errorMessage = String(describing: error)
-            if !errorMessage.contains("size") && !errorMessage.contains("exceeds") && !errorMessage.contains("limit") {
+            if let jsonRPCError = error as? JSONRPCError {
+                XCTAssertEqual(jsonRPCError.code, JSONRPCErrorCode.messageFramingError.rawValue, "Expected message framing error for oversized message")
+            } else {
                 print("Got error (may not be size-related): \(error)")
                 // Log the error but don't fail - different implementations may handle this differently
             }

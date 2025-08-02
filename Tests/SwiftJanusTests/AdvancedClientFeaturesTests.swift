@@ -41,7 +41,7 @@ final class AdvancedClientFeaturesTests: XCTestCase {
     
     private func createTestSocketPath(prefix: String) -> String {
         let uuid = UUID().uuidString.lowercased()
-        return NSTemporaryDirectory() + "test_advanced_\\(prefix)_\\(uuid).sock"
+        return NSTemporaryDirectory() + "test_advanced_\(prefix)_\(uuid).sock"
     }
     
     func testResponseCorrelationSystem() async {
@@ -288,15 +288,21 @@ final class AdvancedClientFeaturesTests: XCTestCase {
     
     func testAdvancedClientFeaturesIntegration() async {
         // Integration test combining multiple Advanced Client Features
+        // This test validates client-side features without server interaction
         let socketPath = createTestSocketPath(prefix: "integration")
         
+        // Test socket path creation first
+        XCTAssertTrue(socketPath.contains("integration"), "Socket path should contain prefix")
+        XCTAssertTrue(socketPath.hasSuffix(".sock"), "Socket path should end with .sock")
+        
         do {
+            // Create client with validation disabled to avoid server dependency
             let client = try await JanusClient(
                 socketPath: socketPath,
                 channelId: "test-channel",
                 maxMessageSize: 65536,
                 defaultTimeout: 5.0,
-                enableValidation: false
+                enableValidation: false  // Disable to avoid manifest fetch
             )
             
             // Test integrated workflow: statistics -> parallel execution -> cancellation

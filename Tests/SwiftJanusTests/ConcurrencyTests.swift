@@ -5,78 +5,142 @@ import XCTest
 import os.lock
 @testable import SwiftJanus
 
+// Thread-safe counter for concurrent test operations
+class Counter {
+    private let queue = DispatchQueue(label: "counter", attributes: .concurrent)
+    private var _successCount = 0
+    private var _errorCount = 0
+    
+    func incrementSuccess() {
+        queue.async(flags: .barrier) {
+            self._successCount += 1
+        }
+    }
+    
+    func incrementError() {
+        queue.async(flags: .barrier) {
+            self._errorCount += 1
+        }
+    }
+    
+    func getCounts() -> (success: Int, error: Int) {
+        return queue.sync {
+            return (_successCount, _errorCount)
+        }
+    }
+}
+
 @MainActor
 final class ConcurrencyTests: XCTestCase {
     
     var testSocketPath: String!
     var testManifest: Manifest!
+    var testServer: JanusServer!
+    var serverTask: Task<Void, Error>!
+    var tempDir: URL!
     
     override func setUpWithError() throws {
-        testSocketPath = "/tmp/janus-concurrency-test.sock"
+        tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("janus-concurrency-tests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         
-        // Clean up any existing test socket files
-        try? FileManager.default.removeItem(atPath: testSocketPath)
-        
-        // Create test Manifest
-        let argSpec = ArgumentSpec(
-            type: .string,
-            required: false,
-            validation: ValidationSpec(maxLength: 1000)
-        )
-        
-        let commandSpec = CommandSpec(
-            description: "Test command",
-            args: ["data": argSpec, "id": argSpec],
-            response: ResponseSpec(type: .object)
-        )
-        
-        let channelSpec = ChannelSpec(
-            description: "Test channel",
-            commands: ["testCommand": commandSpec, "quickCommand": commandSpec]
-        )
-        
-        testManifest = Manifest(
-            version: "1.0.0",
-            channels: ["testChannel": channelSpec]
-        )
+        testSocketPath = tempDir.appendingPathComponent("concurrency-test.sock").path
     }
     
     override func tearDownWithError() throws {
-        // Clean up test socket files
-        try? FileManager.default.removeItem(atPath: testSocketPath)
+        // Stop server if running
+        if let serverTask = serverTask {
+            testServer?.stop()
+            serverTask.cancel()
+        }
+        
+        // Clean up temp directory
+        try? FileManager.default.removeItem(at: tempDir)
+    }
+    
+    // Helper to create and start server for tests (similar to ServerFeaturesTests)
+    func createTestServer() -> (JanusServer, String) {
+        let socketPath = tempDir.appendingPathComponent("test-server.sock").path
+        let config = ServerConfig(
+            maxConnections: 10,
+            defaultTimeout: 5.0,
+            maxMessageSize: 1024,
+            cleanupOnStart: true,
+            cleanupOnShutdown: true
+        )
+        let server = JanusServer(config: config)
+        
+        // Register test command handlers
+        server.registerHandler("testCommand") { command in
+            return .success([
+                "processed": AnyCodable(true),
+                "id": command.args?["id"] ?? AnyCodable("unknown"),
+                "data": command.args?["data"] ?? AnyCodable("test")
+            ])
+        }
+        
+        server.registerHandler("quickCommand") { command in
+            return .success([
+                "quick": AnyCodable(true),
+                "timestamp": AnyCodable(Date().timeIntervalSince1970)
+            ])
+        }
+        
+        return (server, socketPath)
     }
     
     // MARK: - High Concurrency Tests
     
     func testHighConcurrencyCommandExecution() async throws {
+        // Create and start test server
+        let (server, socketPath) = createTestServer()
+        
+        let serverTask = Task {
+            try await server.startListening(socketPath)
+        }
+        
+        // Give server time to start
+        try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        
         let client = try await JanusClient(
-            socketPath: testSocketPath,
+            socketPath: socketPath,
             channelId: "testChannel"
         )
         
         let concurrentOperations = 100
-        var successCount = 0
-        var errorCount = 0
+        let counter = Counter()
         
         await withTaskGroup(of: Void.self) { group in
             for i in 0..<concurrentOperations {
                 group.addTask {
                     do {
-                        _ = try await client.sendCommand(
+                        let response = try await client.sendCommand(
                             "testCommand",
                             args: ["data": AnyCodable("concurrent-test-\(i)"), "id": AnyCodable("\(i)")]
                         )
-                        successCount += 1
+                        
+                        // Verify response is successful
+                        if response.success {
+                            counter.incrementSuccess()
+                        } else {
+                            counter.incrementError()
+                        }
                     } catch {
-                        errorCount += 1
-                        // Expected to fail due to no server, but should not crash
+                        counter.incrementError()
                     }
                 }
             }
         }
         
-        // All operations should complete without hanging or crashing
+        // All operations should succeed with a real server
+        let (successCount, errorCount) = counter.getCounts()
         XCTAssertEqual(successCount + errorCount, concurrentOperations)
+        XCTAssertEqual(successCount, concurrentOperations, "All commands should succeed with real server")
+        XCTAssertEqual(errorCount, 0, "No commands should fail with real server")
+        
+        // Stop server
+        server.stop()
+        serverTask.cancel()
     }
     
     func testConcurrentClientCreation() async throws {
@@ -221,35 +285,62 @@ final class ConcurrencyTests: XCTestCase {
     // MARK: - Thread Safety Tests
     
     func testThreadSafetyOfConfiguration() async throws {
+        // Create and start test server
+        let (server, socketPath) = createTestServer()
+        
+        let serverTask = Task {
+            try await server.startListening(socketPath)
+        }
+        
+        // Give server time to start
+        try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        
         let client = try await JanusClient(
-            socketPath: testSocketPath,
+            socketPath: socketPath,
             channelId: "testChannel"
         )
         
-        // Test concurrent access to configuration
+        // Test concurrent access to configuration and operations
         let accessCount = 100
-        let configAccesses = DispatchSemaphore(value: 0)
-        let accessQueue = DispatchQueue(label: "config-access-counter", attributes: .concurrent)
-        var actualAccesses = 0
+        let counter = Counter()
         
-        DispatchQueue.concurrentPerform(iterations: accessCount) { _ in
-            // Access configuration from multiple threads using proper getter
-            // Configuration access would be internal to SOCK_DGRAM implementation
-            // Testing thread safety of client operations instead
-            
-            // Thread-safe increment
-            accessQueue.async(flags: .barrier) {
-                actualAccesses += 1
-                configAccesses.signal()
+        await withTaskGroup(of: Void.self) { group in
+            for i in 0..<accessCount {
+                group.addTask {
+                    do {
+                        // Mix of configuration access and actual commands to test thread safety
+                        if i % 2 == 0 {
+                            // Test configuration access
+                            _ = client.channelIdValue
+                            _ = client.socketPathValue
+                            counter.incrementSuccess()
+                        } else {
+                            // Test actual command execution
+                            let response = try await client.sendCommand(
+                                "quickCommand",
+                                args: ["test": AnyCodable("thread-safety-\(i)")]
+                            )
+                            if response.success {
+                                counter.incrementSuccess()
+                            } else {
+                                counter.incrementError()
+                            }
+                        }
+                    } catch {
+                        counter.incrementError()
+                    }
+                }
             }
         }
         
-        // Wait for all accesses to complete
-        for _ in 0..<accessCount {
-            configAccesses.wait()
-        }
+        let (successCount, errorCount) = counter.getCounts()
+        XCTAssertEqual(successCount + errorCount, accessCount)
+        XCTAssertEqual(successCount, accessCount, "All thread-safe operations should succeed")
+        XCTAssertEqual(errorCount, 0, "No thread-safe operations should fail")
         
-        XCTAssertEqual(actualAccesses, accessCount)
+        // Stop server
+        server.stop()
+        serverTask.cancel()
     }
     
     func testThreadSafetyOfManifestAccess() async throws {

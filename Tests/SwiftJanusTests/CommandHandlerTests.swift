@@ -401,7 +401,7 @@ final class CommandHandlerTests: XCTestCase {
             XCTFail("Third registration should fail due to limit")
         } catch {
             // Expected error - limit exceeded
-            XCTAssertTrue(error is JanusError, "Error should be JanusError type")
+            XCTAssertTrue(error is JSONRPCError, "Error should be JSONRPCError type")
         }
         
         let count = await registry.handlerCount()

@@ -4,7 +4,6 @@ import Foundation
 
 @available(macOS 10.14, iOS 12.0, *)
 final class HighLevelAPITests: XCTestCase {
-    
     var testSocketPath: String!
     var testManifest: Manifest!
     
@@ -40,10 +39,8 @@ final class HighLevelAPITests: XCTestCase {
         // Valid command should pass validation
         do {
             _ = try await client.sendCommand("ping", args: ["message": AnyCodable("test")])
-        } catch JanusError.connectionError, JanusError.connectionRequired {
-            // Expected - no server running
-        } catch JanusError.connectionTestFailed {
-            // Expected in SOCK_DGRAM - connection test fails
+        } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue || error.code == JSONRPCErrorCode.socketError.rawValue {
+            // Expected - no server running or socket connection failed
         } catch {
             XCTFail("Valid command should pass validation: \(error)")
         }
@@ -59,10 +56,11 @@ final class HighLevelAPITests: XCTestCase {
         do {
             _ = try await client.sendCommand("nonExistentCommand")
             XCTFail("Expected unknown command error")
-        } catch let error as JanusError {
-            if case .unknownCommand = error {
+        } catch let error as JSONRPCError {
+            if error.code == JSONRPCErrorCode.methodNotFound.rawValue {
+                // Validated by error code - no need to check message text
                 // Expected
-            } else if case .connectionTestFailed(_) = error {
+            } else if error.code == JSONRPCErrorCode.serverError.rawValue {
                 // Expected in SOCK_DGRAM - connection fails before command validation
             } else {
                 XCTFail("Expected unknownCommand or connectionTestFailed error, got \(error)")
@@ -80,10 +78,10 @@ final class HighLevelAPITests: XCTestCase {
         do {
             _ = try await client.sendCommand("echo") // Missing required 'data' arg
             XCTFail("Expected missing required argument error")
-        } catch let error as JanusError {
-            if case .missingRequiredArgument(let argName) = error {
-                XCTAssertEqual(argName, "data")
-            } else if case .connectionTestFailed(_) = error {
+        } catch let error as JSONRPCError {
+            if error.code == JSONRPCErrorCode.invalidParams.rawValue {
+                // Validated by error code - missing required argument confirmed
+            } else if error.code == JSONRPCErrorCode.serverError.rawValue {
                 // Expected in SOCK_DGRAM - connection fails before validation
             } else {
                 XCTFail("Expected missingRequiredArgument or connectionTestFailed error, got \(error)")

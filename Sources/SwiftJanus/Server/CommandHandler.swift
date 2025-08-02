@@ -192,7 +192,7 @@ public actor HandlerRegistry {
     /// Register a handler for a command
     public func registerHandler<H: CommandHandler & Sendable>(_ command: String, handler: H) throws {
         guard handlers.count < maxHandlers else {
-            throw JanusError.resourceLimit("Maximum handlers (\(maxHandlers)) exceeded")
+            throw JSONRPCError.create(code: .resourceLimitExceeded, details: "Maximum handlers (\(maxHandlers)) exceeded")
         }
         
         // Wrap the typed handler in a BoxedHandler
@@ -264,23 +264,9 @@ extension JSONRPCError {
         switch error {
         case is DecodingError, is EncodingError:
             code = .parseError
-        case let janusError as JanusError:
-            switch janusError {
-            case .validationError:
-                code = .validationFailed
-            case .commandTimeout, .handlerTimeout, .timeout, .timeoutError:
-                code = .handlerTimeout
-            case .securityViolation:
-                code = .securityViolation
-            case .resourceLimit:
-                code = .resourceLimitExceeded
-            case .invalidArgument, .missingRequiredArgument:
-                code = .invalidParams
-            case .unknownCommand:
-                code = .methodNotFound
-            default:
-                code = .internalError
-            }
+        case let jsonRPCError as JSONRPCError:
+            // Already a JSON-RPC error, preserve the error code
+            return jsonRPCError
         default:
             // Determine code based on error message content
             let message = errorMessage.lowercased()

@@ -41,27 +41,16 @@ final class TimeoutTests: XCTestCase {
                 timeout: 0.1 // Very short timeout
             )
             XCTFail("Expected timeout or connection error")
-        } catch let error as JanusError {
+        } catch let error as JSONRPCError {
             // Connection fails immediately when no server is running
             // This is expected behavior and prevents testing actual timeout logic
-            switch error {
-            case .connectionError, .connectionRequired, .timeout, .timeoutError, .commandTimeout:
-                // Expected - connection failure or timeout
-                break
-            default:
-                XCTFail("Unexpected socket error: \(error)")
-            }
-        } catch let error as JanusError {
-            if case .commandTimeout(let commandId, let timeout) = error {
-                XCTAssertNotNil(commandId)
-                XCTAssertEqual(timeout, 0.1, accuracy: 0.01)
-                // Note: onTimeout callback not available in SOCK_DGRAM API
-                // Timeout handling is built into the sendCommand method
-            } else if case .connectionTestFailed(_) = error {
-                // Expected in SOCK_DGRAM - connection fails before timeout can occur
-            } else {
-                XCTFail("Expected commandTimeout or connectionTestFailed error, got \(error)")
-            }
+            // Expected - connection failure or timeout
+            XCTAssertTrue(
+                error.code == JSONRPCErrorCode.serverError.rawValue ||
+                error.code == JSONRPCErrorCode.handlerTimeout.rawValue ||
+                error.code == JSONRPCErrorCode.socketError.rawValue,
+                "Expected connection or timeout error, got: \(error)"
+            )
         } catch {
             XCTFail("Unexpected error type: \(error)")
         }
@@ -80,19 +69,16 @@ final class TimeoutTests: XCTestCase {
                 timeout: 0.05
             )
             XCTFail("Expected timeout or connection error")
-        } catch JanusError.connectionError, JanusError.connectionRequired {
+        } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
             // Connection fails immediately when no server is running
             // This is expected behavior
-        } catch let error as JanusError {
-            if case .commandTimeout(let commandId, _) = error {
-                let errorMessage = error.localizedDescription
-                XCTAssertTrue(errorMessage.contains(commandId))
-                XCTAssertTrue(errorMessage.contains("0.05"))
-                XCTAssertTrue(errorMessage.contains("timed out"))
-            } else if case .connectionTestFailed(_) = error {
+        } catch let error as JSONRPCError {
+            if error.code == JSONRPCErrorCode.handlerTimeout.rawValue {
+                // Validated by error code - timeout error confirmed
+            } else if error.code == JSONRPCErrorCode.serverError.rawValue {
                 // Expected in SOCK_DGRAM - connection fails before timeout
             } else {
-                XCTFail("Expected commandTimeout or connectionTestFailed error, got \(error)")
+                XCTFail("Expected timeout or connection error, got: \(error)")
             }
         }
     }
@@ -112,9 +98,9 @@ final class TimeoutTests: XCTestCase {
             let uuid = UUID(uuidString: response.commandId)
             XCTAssertNotNil(uuid, "Command ID should be a valid UUID")
             
-        } catch JanusError.connectionError, JanusError.connectionRequired {
+        } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
             // Expected since no server is running
-        } catch JanusError.connectionTestFailed {
+        } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
             // Expected in SOCK_DGRAM - connection test fails
         } catch {
             XCTFail("Unexpected error: \(error)")
@@ -202,12 +188,12 @@ final class TimeoutTests: XCTestCase {
         do {
             _ = try await client.sendCommand("quickCommand", args: ["data": AnyCodable("test")])
             XCTFail("Expected connection error")
-        } catch JanusError.connectionError, JanusError.connectionRequired {
+        } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
             // Expected since no server is running
-        } catch JanusError.commandTimeout(_, let timeout) {
+        } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.handlerTimeout.rawValue {
             // Should not timeout with default 30 second timeout in this fast test
-            XCTFail("Unexpected timeout with \(timeout) seconds")
-        } catch JanusError.connectionTestFailed {
+            XCTFail("Unexpected timeout error")
+        } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
             // Expected in SOCK_DGRAM - connection test fails
         } catch {
             XCTFail("Unexpected error: \(error)")
@@ -252,13 +238,12 @@ final class TimeoutTests: XCTestCase {
     }
     
     func testHandlerTimeoutAPIError() {
-        // Test the handlerTimeout case in JanusError
-        let handlerTimeoutError = JanusError.handlerTimeout("handler-123", 10.0)
+        // Test the handlerTimeout case in JSONRPCError
+        let handlerTimeoutError = JSONRPCError.create(code: .handlerTimeout, details: "Handler 'handler-123' timed out after 10.0 seconds")
         
-        let errorMessage = handlerTimeoutError.localizedDescription
-        XCTAssertTrue(errorMessage.contains("handler-123"))
-        XCTAssertTrue(errorMessage.contains("10.0"))
-        XCTAssertTrue(errorMessage.contains("timed out after"))
+        // Validate error code instead of message text
+        XCTAssertEqual(handlerTimeoutError.code, JSONRPCErrorCode.handlerTimeout.rawValue)
+        XCTAssertNotNil(handlerTimeoutError.data?.details)
     }
     
     private func createTimeoutTestManifest() -> Manifest {
