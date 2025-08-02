@@ -1,10 +1,10 @@
-// APISpecificationParserTests.swift
-// Tests for API specification parsing and validation
+// ManifestParserTests.swift
+// Tests for Manifest parsing and validation
 
 import XCTest
 @testable import SwiftJanus
 
-final class APISpecificationParserTests: XCTestCase {
+final class ManifestParserTests: XCTestCase {
     
     func testParseJSONSpecification() throws {
         let jsonString = """
@@ -39,14 +39,14 @@ final class APISpecificationParserTests: XCTestCase {
         }
         """
         
-        let parser = APISpecificationParser()
-        let apiSpec = try parser.parseJSON(jsonString)
+        let parser = ManifestParser()
+        let manifest = try parser.parseJSON(jsonString)
         
-        XCTAssertEqual(apiSpec.version, "1.0.0")
-        XCTAssertEqual(apiSpec.channels.count, 1)
-        XCTAssertNotNil(apiSpec.channels["testChannel"])
+        XCTAssertEqual(manifest.version, "1.0.0")
+        XCTAssertEqual(manifest.channels.count, 1)
+        XCTAssertNotNil(manifest.channels["testChannel"])
         
-        let channel = apiSpec.channels["testChannel"]!
+        let channel = manifest.channels["testChannel"]!
         XCTAssertEqual(channel.description, "Test channel")
         XCTAssertEqual(channel.commands.count, 1)
         XCTAssertNotNil(channel.commands["getData"])
@@ -83,86 +83,86 @@ final class APISpecificationParserTests: XCTestCase {
                       required: false
         """
         
-        let parser = APISpecificationParser()
-        let apiSpec = try parser.parseYAML(yamlString)
+        let parser = ManifestParser()
+        let manifest = try parser.parseYAML(yamlString)
         
-        XCTAssertEqual(apiSpec.version, "1.0.0")
-        XCTAssertEqual(apiSpec.channels.count, 1)
-        XCTAssertNotNil(apiSpec.channels["testChannel"])
+        XCTAssertEqual(manifest.version, "1.0.0")
+        XCTAssertEqual(manifest.channels.count, 1)
+        XCTAssertNotNil(manifest.channels["testChannel"])
     }
     
     func testValidateValidSpecification() throws {
-        let apiSpec = createValidAPISpecification()
+        let manifest = createValidManifest()
         
         // Should not throw
-        try APISpecificationParser.validate(apiSpec)
+        try ManifestParser.validate(manifest)
     }
     
     func testValidateSpecificationWithEmptyVersion() {
-        let apiSpec = APISpecification(
+        let manifest = Manifest(
             version: "",
             channels: ["test": ChannelSpec(commands: ["cmd": CommandSpec()])]
         )
         
-        XCTAssertThrowsError(try APISpecificationParser.validate(apiSpec)) { error in
-            XCTAssertTrue(error is APISpecificationError)
-            if case .validationFailed(let message) = error as? APISpecificationError {
+        XCTAssertThrowsError(try ManifestParser.validate(manifest)) { error in
+            XCTAssertTrue(error is ManifestError)
+            if case .validationFailed(let message) = error as? ManifestError {
                 XCTAssertTrue(message.contains("version cannot be empty"))
             }
         }
     }
     
     func testValidateSpecificationWithNoChannels() {
-        let apiSpec = APISpecification(
+        let manifest = Manifest(
             version: "1.0.0",
             channels: [:]
         )
         
-        XCTAssertThrowsError(try APISpecificationParser.validate(apiSpec)) { error in
-            XCTAssertTrue(error is APISpecificationError)
-            if case .validationFailed(let message) = error as? APISpecificationError {
+        XCTAssertThrowsError(try ManifestParser.validate(manifest)) { error in
+            XCTAssertTrue(error is ManifestError)
+            if case .validationFailed(let message) = error as? ManifestError {
                 XCTAssertTrue(message.contains("at least one channel"))
             }
         }
     }
     
     func testValidateSpecificationWithEmptyChannelId() {
-        let apiSpec = APISpecification(
+        let manifest = Manifest(
             version: "1.0.0",
             channels: ["": ChannelSpec(commands: ["cmd": CommandSpec()])]
         )
         
-        XCTAssertThrowsError(try APISpecificationParser.validate(apiSpec)) { error in
-            XCTAssertTrue(error is APISpecificationError)
-            if case .validationFailed(let message) = error as? APISpecificationError {
+        XCTAssertThrowsError(try ManifestParser.validate(manifest)) { error in
+            XCTAssertTrue(error is ManifestError)
+            if case .validationFailed(let message) = error as? ManifestError {
                 XCTAssertTrue(message.contains("Channel ID cannot be empty"))
             }
         }
     }
     
     func testValidateSpecificationWithNoCommands() {
-        let apiSpec = APISpecification(
+        let manifest = Manifest(
             version: "1.0.0",
             channels: ["testChannel": ChannelSpec(commands: [:])]
         )
         
-        XCTAssertThrowsError(try APISpecificationParser.validate(apiSpec)) { error in
-            XCTAssertTrue(error is APISpecificationError)
-            if case .validationFailed(let message) = error as? APISpecificationError {
+        XCTAssertThrowsError(try ManifestParser.validate(manifest)) { error in
+            XCTAssertTrue(error is ManifestError)
+            if case .validationFailed(let message) = error as? ManifestError {
                 XCTAssertTrue(message.contains("at least one command"))
             }
         }
     }
     
     func testValidateSpecificationWithEmptyCommandName() {
-        let apiSpec = APISpecification(
+        let manifest = Manifest(
             version: "1.0.0",
             channels: ["testChannel": ChannelSpec(commands: ["": CommandSpec()])]
         )
         
-        XCTAssertThrowsError(try APISpecificationParser.validate(apiSpec)) { error in
-            XCTAssertTrue(error is APISpecificationError)
-            if case .validationFailed(let message) = error as? APISpecificationError {
+        XCTAssertThrowsError(try ManifestParser.validate(manifest)) { error in
+            XCTAssertTrue(error is ManifestError)
+            if case .validationFailed(let message) = error as? ManifestError {
                 XCTAssertTrue(message.contains("Command name cannot be empty"))
             }
         }
@@ -184,14 +184,14 @@ final class APISpecificationParserTests: XCTestCase {
             args: ["invalidArg": argSpec]
         )
         
-        let apiSpec = APISpecification(
+        let manifest = Manifest(
             version: "1.0.0",
             channels: ["testChannel": ChannelSpec(commands: ["testCommand": commandSpec])]
         )
         
-        XCTAssertThrowsError(try APISpecificationParser.validate(apiSpec)) { error in
-            XCTAssertTrue(error is APISpecificationError)
-            if case .validationFailed(let message) = error as? APISpecificationError {
+        XCTAssertThrowsError(try ManifestParser.validate(manifest)) { error in
+            XCTAssertTrue(error is ManifestError)
+            if case .validationFailed(let message) = error as? ManifestError {
                 XCTAssertTrue(message.contains("minLength cannot be greater than maxLength"))
             }
         }
@@ -212,14 +212,14 @@ final class APISpecificationParserTests: XCTestCase {
             args: ["invalidArg": argSpec]
         )
         
-        let apiSpec = APISpecification(
+        let manifest = Manifest(
             version: "1.0.0",
             channels: ["testChannel": ChannelSpec(commands: ["testCommand": commandSpec])]
         )
         
-        XCTAssertThrowsError(try APISpecificationParser.validate(apiSpec)) { error in
-            XCTAssertTrue(error is APISpecificationError)
-            if case .validationFailed(let message) = error as? APISpecificationError {
+        XCTAssertThrowsError(try ManifestParser.validate(manifest)) { error in
+            XCTAssertTrue(error is ManifestError)
+            if case .validationFailed(let message) = error as? ManifestError {
                 XCTAssertTrue(message.contains("Invalid regex pattern"))
             }
         }
@@ -228,7 +228,7 @@ final class APISpecificationParserTests: XCTestCase {
     func testParseInvalidJSON() {
         let invalidJson = "{ invalid json }"
         
-        let parser = APISpecificationParser()
+        let parser = ManifestParser()
         XCTAssertThrowsError(try parser.parseJSON(invalidJson)) { error in
             XCTAssertTrue(error is DecodingError)
         }
@@ -241,10 +241,10 @@ final class APISpecificationParserTests: XCTestCase {
         try! "test content".write(to: tempURL, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL) }
         
-        let parser = APISpecificationParser()
+        let parser = ManifestParser()
         XCTAssertThrowsError(try parser.parseFromFile(at: tempURL)) { error in
-            XCTAssertTrue(error is APISpecificationError)
-            if case .unsupportedFormat(let format) = error as? APISpecificationError {
+            XCTAssertTrue(error is ManifestError)
+            if case .unsupportedFormat(let format) = error as? ManifestError {
                 XCTAssertEqual(format, "txt")
             }
         }
@@ -270,11 +270,11 @@ final class APISpecificationParserTests: XCTestCase {
         try jsonContent.write(to: tempURL, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL) }
         
-        let parser = APISpecificationParser()
-        let apiSpec = try parser.parseFromFile(at: tempURL)
+        let parser = ManifestParser()
+        let manifest = try parser.parseFromFile(at: tempURL)
         
-        XCTAssertEqual(apiSpec.version, "1.0.0")
-        XCTAssertEqual(apiSpec.channels.count, 1)
+        XCTAssertEqual(manifest.version, "1.0.0")
+        XCTAssertEqual(manifest.channels.count, 1)
     }
     
     func testParseFromYAMLFile() throws {
@@ -292,14 +292,14 @@ final class APISpecificationParserTests: XCTestCase {
         try yamlContent.write(to: tempURL, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL) }
         
-        let parser = APISpecificationParser()
-        let apiSpec = try parser.parseFromFile(at: tempURL)
+        let parser = ManifestParser()
+        let manifest = try parser.parseFromFile(at: tempURL)
         
-        XCTAssertEqual(apiSpec.version, "1.0.0")
-        XCTAssertEqual(apiSpec.channels.count, 1)
+        XCTAssertEqual(manifest.version, "1.0.0")
+        XCTAssertEqual(manifest.channels.count, 1)
     }
     
-    private func createValidAPISpecification() -> APISpecification {
+    private func createValidManifest() -> Manifest {
         let argSpec = ArgumentSpec(
             type: .string,
             required: true,
@@ -326,7 +326,7 @@ final class APISpecificationParserTests: XCTestCase {
             commands: ["validCommand": commandSpec]
         )
         
-        return APISpecification(
+        return Manifest(
             version: "1.0.0",
             channels: ["validChannel": channelSpec]
         )

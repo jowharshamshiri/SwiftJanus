@@ -1,0 +1,444 @@
+import XCTest
+@testable import SwiftJanus
+
+final class MessageFramingTests: XCTestCase {
+    var framing: MessageFraming!
+    
+    override func setUp() {
+        super.setUp()
+        framing = MessageFraming()
+    }
+    
+    override func tearDown() {
+        framing = nil
+        super.tearDown()
+    }
+    
+    // MARK: - Encode Message Tests
+    
+    func testEncodeMessage_Command() {
+        let command = SocketCommand(
+            id: "550e8400-e29b-41d4-a716-446655440000",
+            channelId: "test-service",
+            command: "ping",
+            args: nil,
+            timeout: nil,
+            timestamp: 1722248200
+        )
+        
+        let message = MessageFramingMessage.command(command)
+        
+        XCTAssertNoThrow(try {
+            let encoded = try framing.encodeMessage(message)
+            XCTAssertGreaterThan(encoded.count, 4) // At least length prefix + content
+            
+            // Check length prefix (first 4 bytes)
+            let lengthData = encoded.prefix(4)
+            let messageLength = lengthData.withUnsafeBytes { bytes in
+                UInt32(bigEndian: bytes.load(as: UInt32.self))
+            }
+            XCTAssertEqual(Int(messageLength), encoded.count - 4)
+        }())
+    }
+    
+    func testEncodeMessage_Response() {
+        let response = SocketResponse(
+            commandId: "550e8400-e29b-41d4-a716-446655440000",
+            channelId: "test-service",
+            success: true,
+            result: ["pong": AnyCodable(true)],
+            error: nil,
+            timestamp: 1722248201
+        )
+        
+        let message = MessageFramingMessage.response(response)
+        
+        XCTAssertNoThrow(try {
+            let encoded = try framing.encodeMessage(message)
+            XCTAssertGreaterThan(encoded.count, 4)
+        }())
+    }
+    
+    func testEncodeMessage_TooLarge() {
+        // Create a command with very large args
+        let largeData = String(repeating: "x", count: 20 * 1024 * 1024) // 20MB
+        let command = SocketCommand(
+            id: "test-id",
+            channelId: "test-service",
+            command: "large",
+            args: ["data": AnyCodable(largeData)],
+            timeout: nil,
+            timestamp: 1722248200
+        )
+        
+        let message = MessageFramingMessage.command(command)
+        
+        XCTAssertThrowsError(try framing.encodeMessage(message)) { error in
+            if let framingError = error as? MessageFramingError {
+                XCTAssertEqual(framingError.code, "MESSAGE_TOO_LARGE")
+            } else {
+                XCTFail("Expected MessageFramingError")
+            }
+        }
+    }
+    
+    // MARK: - Decode Message Tests
+    
+    func testDecodeMessage_Command() throws {
+        let originalCommand = SocketCommand(
+            id: "550e8400-e29b-41d4-a716-446655440000",
+            channelId: "test-service",
+            command: "ping",
+            args: nil,
+            timeout: nil,
+            timestamp: 1722248200
+        )
+        
+        let message = MessageFramingMessage.command(originalCommand)
+        let encoded = try framing.encodeMessage(message)
+        
+        let result = try framing.decodeMessage(encoded)
+        XCTAssertTrue(result.remainingBuffer.isEmpty)
+        
+        guard case let .command(decodedCommand) = result.message else {
+            XCTFail("Expected command message")
+            return
+        }
+        
+        XCTAssertEqual(decodedCommand.id, originalCommand.id)
+        XCTAssertEqual(decodedCommand.channelId, originalCommand.channelId)
+        XCTAssertEqual(decodedCommand.command, originalCommand.command)
+    }
+    
+    func testDecodeMessage_Response() throws {
+        let originalResponse = SocketResponse(
+            commandId: "550e8400-e29b-41d4-a716-446655440000",
+            channelId: "test-service",
+            success: true,
+            result: ["pong": AnyCodable(true)],
+            error: nil,
+            timestamp: 1722248201
+        )
+        
+        let message = MessageFramingMessage.response(originalResponse)
+        let encoded = try framing.encodeMessage(message)
+        
+        let result = try framing.decodeMessage(encoded)
+        XCTAssertTrue(result.remainingBuffer.isEmpty)
+        
+        guard case let .response(decodedResponse) = result.message else {
+            XCTFail("Expected response message")
+            return
+        }
+        
+        XCTAssertEqual(decodedResponse.commandId, originalResponse.commandId)
+        XCTAssertEqual(decodedResponse.success, originalResponse.success)
+    }
+    
+    func testDecodeMessage_MultipleMessages() throws {
+        let command = SocketCommand(
+            id: "550e8400-e29b-41d4-a716-446655440000",
+            channelId: "test-service",
+            command: "ping",
+            args: nil,
+            timeout: nil,
+            timestamp: 1722248200
+        )
+        
+        let response = SocketResponse(
+            commandId: "550e8400-e29b-41d4-a716-446655440000",
+            channelId: "test-service",
+            success: true,
+            result: ["pong": AnyCodable(true)],
+            error: nil,
+            timestamp: 1722248201
+        )
+        
+        let encoded1 = try framing.encodeMessage(.command(command))
+        let encoded2 = try framing.encodeMessage(.response(response))
+        
+        var combined = Data()
+        combined.append(encoded1)
+        combined.append(encoded2)
+        
+        // Extract first message
+        let result1 = try framing.decodeMessage(combined)
+        guard case .command = result1.message else {
+            XCTFail("First message should be a command")
+            return
+        }
+        
+        // Extract second message
+        let result2 = try framing.decodeMessage(result1.remainingBuffer)
+        guard case .response = result2.message else {
+            XCTFail("Second message should be a response")
+            return
+        }
+        
+        XCTAssertTrue(result2.remainingBuffer.isEmpty)
+    }
+    
+    func testDecodeMessage_IncompleteLengthPrefix() {
+        let shortBuffer = Data([0x00, 0x00]) // Only 2 bytes
+        
+        XCTAssertThrowsError(try framing.decodeMessage(shortBuffer)) { error in
+            if let framingError = error as? MessageFramingError {
+                XCTAssertEqual(framingError.code, "INCOMPLETE_LENGTH_PREFIX")
+            } else {
+                XCTFail("Expected MessageFramingError")
+            }
+        }
+    }
+    
+    func testDecodeMessage_IncompleteMessage() throws {
+        let command = SocketCommand(
+            id: "550e8400-e29b-41d4-a716-446655440000",
+            channelId: "test-service",
+            command: "ping",
+            args: nil,
+            timeout: nil,
+            timestamp: 1722248200
+        )
+        
+        let encoded = try framing.encodeMessage(.command(command))
+        let truncated = encoded.prefix(encoded.count - 10) // Remove last 10 bytes
+        
+        XCTAssertThrowsError(try framing.decodeMessage(truncated)) { error in
+            if let framingError = error as? MessageFramingError {
+                XCTAssertEqual(framingError.code, "INCOMPLETE_MESSAGE")
+            } else {
+                XCTFail("Expected MessageFramingError")
+            }
+        }
+    }
+    
+    func testDecodeMessage_ZeroLength() {
+        let zeroLengthBuffer = Data([0x00, 0x00, 0x00, 0x00]) // 0 length
+        
+        XCTAssertThrowsError(try framing.decodeMessage(zeroLengthBuffer)) { error in
+            if let framingError = error as? MessageFramingError {
+                XCTAssertEqual(framingError.code, "ZERO_LENGTH_MESSAGE")
+            } else {
+                XCTFail("Expected MessageFramingError")
+            }
+        }
+    }
+    
+    // MARK: - Extract Messages Tests
+    
+    func testExtractMessages_MultipleComplete() throws {
+        let command = SocketCommand(
+            id: "550e8400-e29b-41d4-a716-446655440000",
+            channelId: "test-service",
+            command: "ping",
+            args: nil,
+            timeout: nil,
+            timestamp: 1722248200
+        )
+        
+        let response = SocketResponse(
+            commandId: "550e8400-e29b-41d4-a716-446655440000",
+            channelId: "test-service",
+            success: true,
+            result: ["pong": AnyCodable(true)],
+            error: nil,
+            timestamp: 1722248201
+        )
+        
+        let encoded1 = try framing.encodeMessage(.command(command))
+        let encoded2 = try framing.encodeMessage(.response(response))
+        
+        var combined = Data()
+        combined.append(encoded1)
+        combined.append(encoded2)
+        
+        let result = try framing.extractMessages(combined)
+        
+        XCTAssertEqual(result.messages.count, 2)
+        XCTAssertTrue(result.remainingBuffer.isEmpty)
+        
+        guard case .command = result.messages[0],
+              case .response = result.messages[1] else {
+            XCTFail("Expected command and response messages")
+            return
+        }
+    }
+    
+    func testExtractMessages_PartialMessage() throws {
+        let command = SocketCommand(
+            id: "550e8400-e29b-41d4-a716-446655440000",
+            channelId: "test-service",
+            command: "ping",
+            args: nil,
+            timeout: nil,
+            timestamp: 1722248200
+        )
+        
+        let response = SocketResponse(
+            commandId: "550e8400-e29b-41d4-a716-446655440000",
+            channelId: "test-service",
+            success: true,
+            result: ["pong": AnyCodable(true)],
+            error: nil,
+            timestamp: 1722248201
+        )
+        
+        let encoded1 = try framing.encodeMessage(.command(command))
+        let encoded2 = try framing.encodeMessage(.response(response))
+        
+        var combined = Data()
+        combined.append(encoded1)
+        combined.append(encoded2)
+        
+        // Take only part of the second message
+        let partial = combined.prefix(encoded1.count + 10)
+        
+        let result = try framing.extractMessages(partial)
+        
+        XCTAssertEqual(result.messages.count, 1)
+        XCTAssertEqual(result.remainingBuffer.count, 10) // Partial second message
+        
+        guard case .command = result.messages[0] else {
+            XCTFail("Expected command message")
+            return
+        }
+    }
+    
+    func testExtractMessages_EmptyBuffer() throws {
+        let result = try framing.extractMessages(Data())
+        
+        XCTAssertEqual(result.messages.count, 0)
+        XCTAssertTrue(result.remainingBuffer.isEmpty)
+    }
+    
+    func testExtractMessages_PartialLengthPrefix() throws {
+        let partial = Data([0x00, 0x00]) // Incomplete length prefix
+        
+        let result = try framing.extractMessages(partial)
+        
+        XCTAssertEqual(result.messages.count, 0)
+        XCTAssertEqual(result.remainingBuffer, partial)
+    }
+    
+    // MARK: - Calculate Framed Size Tests
+    
+    func testCalculateFramedSize() throws {
+        let command = SocketCommand(
+            id: "550e8400-e29b-41d4-a716-446655440000",
+            channelId: "test-service",
+            command: "ping",
+            args: nil,
+            timeout: nil,
+            timestamp: 1722248200
+        )
+        
+        let message = MessageFramingMessage.command(command)
+        let size = try framing.calculateFramedSize(message)
+        let encoded = try framing.encodeMessage(message)
+        
+        XCTAssertEqual(size, encoded.count)
+    }
+    
+    // MARK: - Direct Message Tests
+    
+    func testEncodeDirectMessage() throws {
+        let command = SocketCommand(
+            id: "550e8400-e29b-41d4-a716-446655440000",
+            channelId: "test-service",
+            command: "ping",
+            args: nil,
+            timeout: nil,
+            timestamp: 1722248200
+        )
+        
+        let message = MessageFramingMessage.command(command)
+        let directEncoded = try framing.encodeDirectMessage(message)
+        
+        XCTAssertGreaterThan(directEncoded.count, 4)
+        
+        // Should be smaller than envelope version (no envelope overhead)
+        let envelopeEncoded = try framing.encodeMessage(message)
+        XCTAssertLessThan(directEncoded.count, envelopeEncoded.count)
+    }
+    
+    func testDecodeDirectMessage() throws {
+        let originalCommand = SocketCommand(
+            id: "550e8400-e29b-41d4-a716-446655440000",
+            channelId: "test-service",
+            command: "ping",
+            args: nil,
+            timeout: nil,
+            timestamp: 1722248200
+        )
+        
+        let message = MessageFramingMessage.command(originalCommand)
+        let encoded = try framing.encodeDirectMessage(message)
+        
+        let result = try framing.decodeDirectMessage(encoded)
+        XCTAssertTrue(result.remainingBuffer.isEmpty)
+        
+        guard case let .command(decodedCommand) = result.message else {
+            XCTFail("Expected command message")
+            return
+        }
+        
+        XCTAssertEqual(decodedCommand.id, originalCommand.id)
+        XCTAssertEqual(decodedCommand.channelId, originalCommand.channelId)
+        XCTAssertEqual(decodedCommand.command, originalCommand.command)
+    }
+    
+    func testDirectRoundtripCommand() throws {
+        let originalCommand = SocketCommand(
+            id: "550e8400-e29b-41d4-a716-446655440000",
+            channelId: "test-service",
+            command: "ping",
+            args: nil,
+            timeout: nil,
+            timestamp: 1722248200
+        )
+        
+        let message = MessageFramingMessage.command(originalCommand)
+        let encoded = try framing.encodeDirectMessage(message)
+        let result = try framing.decodeDirectMessage(encoded)
+        
+        guard case let .command(decodedCommand) = result.message else {
+            XCTFail("Expected command message")
+            return
+        }
+        
+        // Compare JSON representations for deep equality
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        
+        let originalJSON = try encoder.encode(originalCommand)
+        let decodedJSON = try encoder.encode(decodedCommand)
+        
+        XCTAssertEqual(originalJSON, decodedJSON)
+    }
+    
+    func testDirectRoundtripResponse() throws {
+        let originalResponse = SocketResponse(
+            commandId: "550e8400-e29b-41d4-a716-446655440000",
+            channelId: "test-service",
+            success: true,
+            result: ["pong": AnyCodable(true)],
+            error: nil,
+            timestamp: 1722248201
+        )
+        
+        let message = MessageFramingMessage.response(originalResponse)
+        let encoded = try framing.encodeDirectMessage(message)
+        let result = try framing.decodeDirectMessage(encoded)
+        
+        guard case let .response(decodedResponse) = result.message else {
+            XCTFail("Expected response message")
+            return
+        }
+        
+        // Compare key fields for equality (JSON comparison more complex for responses with Any types)
+        XCTAssertEqual(decodedResponse.commandId, originalResponse.commandId)
+        XCTAssertEqual(decodedResponse.channelId, originalResponse.channelId)
+        XCTAssertEqual(decodedResponse.success, originalResponse.success)
+        XCTAssertEqual(decodedResponse.timestamp, originalResponse.timestamp)
+    }
+}

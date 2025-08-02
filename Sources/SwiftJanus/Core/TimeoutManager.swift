@@ -11,8 +11,17 @@ public final class TimeoutManager {
     // MARK: - Private Properties
     
     private let queue = DispatchQueue(label: "com.janus.timeout-manager", qos: .utility)
-    private var activeTimeouts: [String: DispatchWorkItem] = [:]
+    private var activeTimeouts: [String: TimeoutEntry] = [:]
     private let lock = NSLock()
+    
+    // MARK: - Private Types
+    
+    private struct TimeoutEntry {
+        let workItem: DispatchWorkItem
+        let callback: () -> Void
+        let registeredAt: Date
+        var timeout: TimeInterval
+    }
     
     // MARK: - Initialization
     
@@ -45,8 +54,14 @@ public final class TimeoutManager {
             self?.handleTimeout(commandId: commandId, callback: callback)
         }
         
-        // Store the work item
-        activeTimeouts[commandId] = workItem
+        // Store the timeout entry
+        let entry = TimeoutEntry(
+            workItem: workItem,
+            callback: callback,
+            registeredAt: Date(),
+            timeout: timeout
+        )
+        activeTimeouts[commandId] = entry
         
         // Schedule the timeout
         queue.asyncAfter(deadline: .now() + timeout, execute: workItem)
@@ -87,8 +102,8 @@ public final class TimeoutManager {
         lock.lock()
         defer { lock.unlock() }
         
-        for (_, workItem) in activeTimeouts {
-            workItem.cancel()
+        for (_, entry) in activeTimeouts {
+            entry.workItem.cancel()
         }
         activeTimeouts.removeAll()
     }
@@ -179,19 +194,30 @@ public final class TimeoutManager {
         lock.lock()
         defer { lock.unlock() }
         
-        guard let existingWorkItem = activeTimeouts[commandId] else {
+        guard let existingEntry = activeTimeouts[commandId] else {
             return false
         }
         
         // Cancel existing timeout
-        existingWorkItem.cancel()
+        existingEntry.workItem.cancel()
         
-        // Create new extended timeout
+        // Preserve the original callback and create new extended timeout
+        let originalCallback = existingEntry.callback
+        let newTimeout = existingEntry.timeout + additionalTime
+        
         let newWorkItem = DispatchWorkItem { [weak self] in
-            self?.handleTimeoutWithCleanup(commandId: commandId)
+            self?.handleTimeout(commandId: commandId, callback: originalCallback)
         }
         
-        activeTimeouts[commandId] = newWorkItem
+        // Create new entry with extended timeout
+        let newEntry = TimeoutEntry(
+            workItem: newWorkItem,
+            callback: originalCallback,
+            registeredAt: existingEntry.registeredAt,
+            timeout: newTimeout
+        )
+        
+        activeTimeouts[commandId] = newEntry
         
         // Schedule with additional time
         queue.asyncAfter(deadline: .now() + additionalTime, execute: newWorkItem)
@@ -221,11 +247,11 @@ public final class TimeoutManager {
             defer { lock.unlock() }
         }
         
-        guard let workItem = activeTimeouts.removeValue(forKey: commandId) else {
+        guard let entry = activeTimeouts.removeValue(forKey: commandId) else {
             return false
         }
         
-        workItem.cancel()
+        entry.workItem.cancel()
         return true
     }
     

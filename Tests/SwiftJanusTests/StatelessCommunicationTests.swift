@@ -8,7 +8,7 @@ import XCTest
 final class StatelessCommunicationTests: XCTestCase {
     
     var testSocketPath: String!
-    var testAPISpec: APISpecification!
+    var testManifest: Manifest!
     
     override func setUpWithError() throws {
         testSocketPath = "/tmp/janus-stateless-test.sock"
@@ -16,8 +16,8 @@ final class StatelessCommunicationTests: XCTestCase {
         // Clean up any existing test socket files
         try? FileManager.default.removeItem(atPath: testSocketPath)
         
-        // Create test API specification
-        testAPISpec = createStatelessTestAPISpec()
+        // Create test Manifest
+        testManifest = createStatelessTestManifest()
     }
     
     override func tearDownWithError() throws {
@@ -186,9 +186,9 @@ final class StatelessCommunicationTests: XCTestCase {
         XCTAssertTrue(true)
     }
     
-    func testAPISpecificationValidationOnInit() async {
+    func testManifestValidationOnInit() async {
         // Test with empty channels
-        let invalidSpec1 = APISpecification(version: "1.0.0", channels: [:])
+        let invalidSpec1 = Manifest(version: "1.0.0", channels: [:])
         
         do {
             _ = try await JanusClient(
@@ -201,7 +201,7 @@ final class StatelessCommunicationTests: XCTestCase {
         }
         
         // Test with missing target channel
-        let validSpec = createStatelessTestAPISpec()
+        let validSpec = createStatelessTestManifest()
         
         do {
             _ = try await JanusClient(
@@ -247,7 +247,7 @@ final class StatelessCommunicationTests: XCTestCase {
         XCTAssertEqual(decodedCommand.command, "testCommand")
     }
     
-    private func createStatelessTestAPISpec() -> APISpecification {
+    private func createStatelessTestManifest() -> Manifest {
         let dataArg = ArgumentSpec(
             type: .string,
             required: true,
@@ -271,13 +271,13 @@ final class StatelessCommunicationTests: XCTestCase {
             commands: ["quickCommand": quickCommand]
         )
         
-        return APISpecification(
+        return Manifest(
             version: "1.0.0",
             channels: ["statelessChannel": channelSpec]
         )
     }
     
-    private func createMultiChannelAPISpec() -> APISpecification {
+    private func createMultiChannelManifest() -> Manifest {
         let channel1Command = CommandSpec(
             description: "Command for channel 1",
             args: [:],
@@ -300,7 +300,7 @@ final class StatelessCommunicationTests: XCTestCase {
             commands: ["channel2Command": channel2Command]
         )
         
-        return APISpecification(
+        return Manifest(
             version: "1.0.0",
             channels: [
                 "channel1": channel1Spec,

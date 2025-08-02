@@ -31,26 +31,26 @@ struct JanusDgram: AsyncParsableCommand {
     @Option(name: .long, help: "Message to send")
     var message: String = "hello"
     
-    @Option(name: .long, help: "API specification file (required for validation)")
+    @Option(name: .long, help: "Manifest file (required for validation)")
     var spec: String?
     
-    // API Specification storage
-    private var apiSpecification: APISpecification?
+    // Manifest storage
+    private var manifest: Manifest?
     
     @Option(name: .long, help: "Channel ID for command routing")
     var channel: String = "test"
     
     mutating func run() async throws {
-        // Load API specification if provided
+        // Load Manifest if provided
         if let specPath = spec {
             do {
                 let specURL = URL(fileURLWithPath: specPath)
                 let specData = try Data(contentsOf: specURL)
-                let parser = APISpecificationParser()
-                apiSpecification = try parser.parseJSON(specData)
-                print("✅ Loaded API specification from: \(specPath)")
+                let parser = ManifestParser()
+                manifest = try parser.parseJSON(specData)
+                print("✅ Loaded Manifest from: \(specPath)")
             } catch {
-                print("❌ Failed to load API specification from \(specPath): \(error)")
+                print("❌ Failed to load Manifest from \(specPath): \(error)")
                 JanusDgram.exit(withError: ExitCode.failure)
                 return
             }
@@ -168,7 +168,7 @@ struct JanusDgram: AsyncParsableCommand {
     func sendResponse(commandId: String, channelId: String, command: String, args: [String: AnyCodable]?, replyTo: String) {
         var result: [String: AnyCodable] = [:]
         var success = true
-        var errorObj: SocketError?
+        var errorObj: JSONRPCError?
         
         // Built-in commands are always allowed and hardcoded (matches Go implementation exactly)
         let builtInCommands: Set<String> = ["spec", "ping", "echo", "get_info", "validate", "slow_process"]
@@ -183,11 +183,11 @@ struct JanusDgram: AsyncParsableCommand {
         }
         // spec and ping commands don't need message arguments
         
-        // Validate command against API specification if provided
-        // Built-in commands bypass API spec validation
-        if let apiSpec = apiSpecification, !builtInCommands.contains(command) {
+        // Validate command against Manifest if provided
+        // Built-in commands bypass Manifest validation
+        if let manifest = manifest, !builtInCommands.contains(command) {
             // Check if command exists in the channel
-            if let channel = apiSpec.channels[channelId],
+            if let channel = manifest.channels[channelId],
                let _ = channel.commands[command] {
                 // Command exists, validate arguments
                 do {
@@ -197,17 +197,17 @@ struct JanusDgram: AsyncParsableCommand {
                     }
                 } catch {
                     success = false
-                    errorObj = SocketError(
-                        code: "VALIDATION_ERROR",
-                        message: "Command validation failed: \(error.localizedDescription)"
+                    errorObj = JSONRPCError.create(
+                        code: .validationFailed,
+                        details: "Command validation failed: \(error.localizedDescription)"
                     )
                 }
             } else {
-                // Command not found in API spec
+                // Command not found in Manifest
                 success = false
-                errorObj = SocketError(
-                    code: "UNKNOWN_COMMAND",
-                    message: "Command '\(command)' not found in channel '\(channelId)'"
+                errorObj = JSONRPCError.create(
+                    code: .methodNotFound,
+                    details: "Command '\(command)' not found in channel '\(channelId)'"
                 )
             }
         }
@@ -252,13 +252,13 @@ struct JanusDgram: AsyncParsableCommand {
                 result["message"] = message
             }
         case "spec":
-            // Return loaded API specification
-            if let apiSpec = apiSpecification {
-                // Directly encode the API specification - AnyCodable will handle Codable types
-                result["specification"] = AnyCodable(apiSpec)
+            // Return loaded Manifest
+            if let manifest = manifest {
+                // Directly encode the Manifest - AnyCodable will handle Codable types
+                result["specification"] = AnyCodable(manifest)
             } else {
                 success = false
-                result["error"] = AnyCodable("No API specification loaded. Use --spec argument to load specification file")
+                result["error"] = AnyCodable("No Manifest loaded. Use --spec argument to load specification file")
             }
             default:
                 success = false
@@ -266,7 +266,7 @@ struct JanusDgram: AsyncParsableCommand {
             }
         }
         
-        // Note: ResponseValidator integration would require API specification loading
+        // Note: ResponseValidator integration would require Manifest loading
         // For now, responses are sent without validation in this standalone binary
         
         let response = SocketResponse(
@@ -274,7 +274,7 @@ struct JanusDgram: AsyncParsableCommand {
             channelId: channelId,
             success: success,
             result: result.isEmpty ? nil : result,
-            error: errorObj ?? (success ? nil : SocketError(code: "UNKNOWN_COMMAND", message: "Unknown command", details: nil)),
+            error: errorObj ?? (success ? nil : JSONRPCError.create(code: .methodNotFound, details: "Unknown command")),
             timestamp: Date().timeIntervalSince1970
         )
         
@@ -319,7 +319,7 @@ struct JanusDgram: AsyncParsableCommand {
         }
     }
     
-    /// Validate command arguments against API specification (matches Go implementation)
+    /// Validate command arguments against Manifest (matches Go implementation)
     private func validateCommandArgs(args: [String: AnyCodable]?, againstSpec specArgs: [String: ArgumentSpec]) throws {
         // Check for required arguments
         for (argName, argSpec) in specArgs {

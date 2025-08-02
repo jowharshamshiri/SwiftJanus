@@ -8,7 +8,7 @@ import XCTest
 final class ProtocolTests: XCTestCase {
     
     var testSocketPath: String!
-    var testAPISpec: APISpecification!
+    var testManifest: Manifest!
     
     override func setUpWithError() throws {
         testSocketPath = "/tmp/janus-protocol-test.sock"
@@ -16,7 +16,7 @@ final class ProtocolTests: XCTestCase {
         // Clean up any existing test socket files
         try? FileManager.default.removeItem(atPath: testSocketPath)
         
-        // Create test API specification
+        // Create test Manifest
         let argSpec = ArgumentSpec(
             type: .string,
             required: false,
@@ -34,7 +34,7 @@ final class ProtocolTests: XCTestCase {
             commands: ["testCommand": commandSpec]
         )
         
-        testAPISpec = APISpecification(
+        testManifest = Manifest(
             version: "1.0.0",
             channels: ["testChannel": channelSpec]
         )
@@ -220,10 +220,9 @@ final class ProtocolTests: XCTestCase {
     }
     
     func testSocketResponseSerialization() throws {
-        let testError = SocketError(
-            code: "500",
-            message: "Test error",
-            details: ["context": AnyCodable("test context")]
+        let testError = JSONRPCError.create(
+            code: .serverError,
+            details: "Test error"
         )
         
         let testResponse = SocketResponse(
@@ -344,10 +343,10 @@ final class ProtocolTests: XCTestCase {
         // Test that the protocol handles version information correctly
         let dummyChannel = ChannelSpec(commands: [:])
         let specs = [
-            APISpecification(version: "1.0.0", channels: ["testChannel": dummyChannel]),
-            APISpecification(version: "2.0.0", channels: ["testChannel": dummyChannel]),
-            APISpecification(version: "1.0.0-beta", channels: ["testChannel": dummyChannel]),
-            APISpecification(version: "1.0.0+build.1", channels: ["testChannel": dummyChannel])
+            Manifest(version: "1.0.0", channels: ["testChannel": dummyChannel]),
+            Manifest(version: "2.0.0", channels: ["testChannel": dummyChannel]),
+            Manifest(version: "1.0.0-beta", channels: ["testChannel": dummyChannel]),
+            Manifest(version: "1.0.0+build.1", channels: ["testChannel": dummyChannel])
         ]
         
         for spec in specs {

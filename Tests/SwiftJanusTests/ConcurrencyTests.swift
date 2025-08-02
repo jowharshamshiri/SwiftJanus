@@ -9,7 +9,7 @@ import os.lock
 final class ConcurrencyTests: XCTestCase {
     
     var testSocketPath: String!
-    var testAPISpec: APISpecification!
+    var testManifest: Manifest!
     
     override func setUpWithError() throws {
         testSocketPath = "/tmp/janus-concurrency-test.sock"
@@ -17,7 +17,7 @@ final class ConcurrencyTests: XCTestCase {
         // Clean up any existing test socket files
         try? FileManager.default.removeItem(atPath: testSocketPath)
         
-        // Create test API specification
+        // Create test Manifest
         let argSpec = ArgumentSpec(
             type: .string,
             required: false,
@@ -35,7 +35,7 @@ final class ConcurrencyTests: XCTestCase {
             commands: ["testCommand": commandSpec, "quickCommand": commandSpec]
         )
         
-        testAPISpec = APISpecification(
+        testManifest = Manifest(
             version: "1.0.0",
             channels: ["testChannel": channelSpec]
         )
@@ -252,18 +252,18 @@ final class ConcurrencyTests: XCTestCase {
         XCTAssertEqual(actualAccesses, accessCount)
     }
     
-    func testThreadSafetyOfAPISpecAccess() async throws {
+    func testThreadSafetyOfManifestAccess() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel"
         )
         
-        // Test concurrent access to API specification
+        // Test concurrent access to Manifest
         let accessCount = 100
         let specAccesses = OSAllocatedUnfairLock(initialState: 0)
         
         DispatchQueue.concurrentPerform(iterations: accessCount) { _ in
-            // Access API spec from multiple threads using proper getter
+            // Access Manifest from multiple threads using proper getter
             // Specification access would be internal to SOCK_DGRAM implementation
             // Testing thread safety of client operations instead
             specAccesses.withLock { $0 += 1 }

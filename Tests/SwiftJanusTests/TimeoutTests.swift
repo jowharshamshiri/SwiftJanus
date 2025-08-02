@@ -8,7 +8,7 @@ import XCTest
 final class TimeoutTests: XCTestCase {
     
     var testSocketPath: String!
-    var testAPISpec: APISpecification!
+    var testManifest: Manifest!
     
     override func setUpWithError() throws {
         testSocketPath = "/tmp/janus-timeout-test.sock"
@@ -16,8 +16,8 @@ final class TimeoutTests: XCTestCase {
         // Clean up any existing test socket files
         try? FileManager.default.removeItem(atPath: testSocketPath)
         
-        // Create test API specification
-        testAPISpec = createTimeoutTestAPISpec()
+        // Create test Manifest
+        testManifest = createTimeoutTestManifest()
     }
     
     override func tearDownWithError() throws {
@@ -261,7 +261,7 @@ final class TimeoutTests: XCTestCase {
         XCTAssertTrue(errorMessage.contains("timed out after"))
     }
     
-    private func createTimeoutTestAPISpec() -> APISpecification {
+    private func createTimeoutTestManifest() -> Manifest {
         let dataArg = ArgumentSpec(
             type: .string,
             required: true,
@@ -288,7 +288,7 @@ final class TimeoutTests: XCTestCase {
             ]
         )
         
-        return APISpecification(
+        return Manifest(
             version: "1.0.0",
             channels: ["timeoutChannel": channelSpec]
         )

@@ -16,7 +16,7 @@ A **production-ready**, **enterprise-grade** Swift library for Unix socket-based
 
 - **Stateless Communication**: Each command creates independent connections with UUID tracking
 - **Connection Pooling**: Efficient connection reuse with configurable limits
-- **API Specification**: Rich JSON/YAML format with validation constraints
+- **Manifest**: Rich JSON/YAML format with validation constraints
 - **Comprehensive Error Handling**: Detailed error types with security context
 - **Memory Management**: Automatic cleanup with configurable resource monitoring
 - **High Performance**: Optimized for concurrent operations and large payloads
@@ -69,7 +69,7 @@ let config = JanusClientConfig(
 let client = try JanusClient(
     socketPath: "/tmp/my-api.sock", // Automatically validated for security
     channelId: "secure-channel",
-    apiSpec: apiSpecDocument,
+    manifest: manifestDocument,
     config: config
 )
 ```
@@ -125,9 +125,9 @@ let commandId = try await client.publishCommand(
 print("📝 Logged with ID: \(commandId)")
 ```
 
-## API Specification Format
+## Manifest Format
 
-The API specification defines available commands, their arguments, and input/output schemas:
+The Manifest defines available commands, their arguments, and input/output schemas:
 
 ```json
 {
@@ -258,9 +258,9 @@ Low-level socket communication layer:
 - **Data Validation**: UTF-8 encoding and JSON structure validation
 - **Timeout Handling**: Configurable per-operation timeouts
 
-#### APISpecificationParser
+#### ManifestParser
 
-API specification processing:
+Manifest processing:
 
 - **Format Support**: JSON and YAML specification parsing
 - **Validation Engine**: Command, argument, and response schema validation
@@ -387,7 +387,7 @@ let socketPath = "\(socketDir)/api.sock"
 let client = try JanusClient(
     socketPath: socketPath,
     channelId: "secure-api",
-    apiSpec: apiSpec,
+    manifest: manifest,
     config: secureConfig
 )
 ```

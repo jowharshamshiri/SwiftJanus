@@ -97,10 +97,9 @@ final class EdgeCasesTests: XCTestCase {
     }
     
     func testSocketResponseWithError() throws {
-        let error = SocketError(
-            code: "500",
-            message: "Internal server error",
-            details: ["context": AnyCodable("test context")]
+        let error = JSONRPCError.create(
+            code: .internalError,
+            details: "Internal server error"
         )
         
         let response = SocketResponse(
@@ -119,8 +118,8 @@ final class EdgeCasesTests: XCTestCase {
         
         XCTAssertFalse(decodedResponse.success)
         XCTAssertNotNil(decodedResponse.error)
-        XCTAssertEqual(decodedResponse.error?.code, "500")
-        XCTAssertEqual(decodedResponse.error?.message, "Internal server error")
+        XCTAssertEqual(decodedResponse.error?.code, JSONRPCErrorCode.internalError.rawValue)
+        XCTAssertEqual(decodedResponse.error?.message, JSONRPCErrorCode.internalError.message)
     }
     
     func testValidationWithEdgeCasePatterns() throws {
@@ -143,13 +142,13 @@ final class EdgeCasesTests: XCTestCase {
             commands: ["validateEmail": commandSpec]
         )
         
-        let apiSpec = APISpecification(
+        let manifest = Manifest(
             version: "1.0.0",
             channels: ["testChannel": channelSpec]
         )
         
         // Should not throw during validation
-        try APISpecificationParser.validate(apiSpec)
+        try ManifestParser.validate(manifest)
     }
     
     func testValidationWithMinMaxEdgeCases() throws {
@@ -175,16 +174,16 @@ final class EdgeCasesTests: XCTestCase {
             commands: ["testExact": commandSpec]
         )
         
-        let apiSpec = APISpecification(
+        let manifest = Manifest(
             version: "1.0.0",
             channels: ["testChannel": channelSpec]
         )
         
         // Should not throw when min equals max
-        try APISpecificationParser.validate(apiSpec)
+        try ManifestParser.validate(manifest)
     }
     
-    func testAPISpecWithEmptyCommandArgs() async throws {
+    func testManifestWithEmptyCommandArgs() async throws {
         let commandSpec = CommandSpec(
             description: "Command with no args",
             args: [:], // Empty args
@@ -195,13 +194,13 @@ final class EdgeCasesTests: XCTestCase {
             commands: ["noArgsCommand": commandSpec]
         )
         
-        let apiSpec = APISpecification(
+        let manifest = Manifest(
             version: "1.0.0",
             channels: ["testChannel": channelSpec]
         )
         
         // Should validate successfully
-        try APISpecificationParser.validate(apiSpec)
+        try ManifestParser.validate(manifest)
         
         let client = try await JanusClient(
             socketPath: testSocketPath,
@@ -273,13 +272,13 @@ final class EdgeCasesTests: XCTestCase {
             commands: commands
         )
         
-        let apiSpec = APISpecification(
+        let manifest = Manifest(
             version: "1.0.0",
             channels: ["channel-with-dashes": channelSpec]
         )
         
         // Should validate successfully
-        try APISpecificationParser.validate(apiSpec)
+        try ManifestParser.validate(manifest)
         
         let client = try await JanusClient(
             socketPath: testSocketPath,
@@ -335,7 +334,7 @@ final class EdgeCasesTests: XCTestCase {
         }
     }
     
-    private func createSimpleAPISpec() -> APISpecification {
+    private func createSimpleManifest() -> Manifest {
         let commandSpec = CommandSpec(
             description: "Simple test command",
             args: [:],
@@ -346,7 +345,7 @@ final class EdgeCasesTests: XCTestCase {
             commands: ["testCommand": commandSpec]
         )
         
-        return APISpecification(
+        return Manifest(
             version: "1.0.0",
             channels: ["testChannel": channelSpec]
         )

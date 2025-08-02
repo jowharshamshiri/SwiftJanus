@@ -13,14 +13,14 @@ A comprehensive, stateless Unix socket-based API communication library for Swift
 - ✅ **Channel-Based Routing**: Commands routed by channel ID only
 - ✅ **Bi-directional Timeout Handling**: Both caller and consumer receive timeout notifications
 
-### API Specification System
+### Manifest System
 - ✅ **JSON/YAML Support**: Complete parser supporting both formats with validation
 - ✅ **Rich Command Definitions**: Arguments, responses, error codes, validation constraints
 - ✅ **Argument Validation**: Type checking, required fields, patterns, min/max values
 - ✅ **Model References**: Support for complex data types with references
 
 ### Communication Protocol
-- ✅ **Socket Initialization**: Initialize with socket file, channel ID, and API spec
+- ✅ **Socket Initialization**: Initialize with socket file, channel ID, and Manifest
 - ✅ **Command Publishing**: Fire-and-forget commands returning UUID for tracking
 - ✅ **Command Consumption**: Register handlers with callback system
 - ✅ **Response Handling**: Structured responses with command UUID correlation
@@ -43,19 +43,19 @@ Janus/
 │   ├── Core/
 │   │   ├── JanusClient.swift   # Low-level socket communication
 │   │   ├── JanusClient.swift  # High-level API client
-│   │   └── APISpecificationParser.swift # JSON/YAML parser
+│   │   └── ManifestParser.swift # JSON/YAML parser
 │   └── Models/
-│       ├── APISpecification.swift   # API spec data models
+│       ├── Manifest.swift   # Manifest data models
 │       └── SocketProtocol.swift     # Communication protocol models
 ├── Tests/JanusTests/
 │   ├── JanusTests.swift      # Basic functionality tests
-│   ├── APISpecificationParserTests.swift # Parser validation tests
+│   ├── ManifestParserTests.swift # Parser validation tests
 │   ├── JanusClientTests.swift # Client functionality tests
 │   ├── StatelessCommunicationTests.swift # Stateless behavior tests
 │   ├── TimeoutTests.swift          # Timeout handling tests
 │   └── EdgeCasesTests.swift        # Edge cases and error conditions
 ├── Examples/
-│   └── example-api-spec.json       # Example API specification
+│   └── example-manifest.json       # Example Manifest
 └── README.md                       # Complete usage documentation
 ```
 
@@ -68,7 +68,7 @@ Janus/
 - Timeout management for both sending and receiving
 - Command handler registration and execution
 
-#### `APISpecification`
+#### `Manifest`
 - Complete data model for API definitions
 - Support for commands, arguments, responses, errors
 - Validation constraints and model references
@@ -102,7 +102,7 @@ try client.registerCommandHandler("slowOperation") { command, args in
 }
 ```
 
-#### API Specification Format
+#### Manifest Format
 ```json
 {
   "version": "1.0.0",
@@ -139,7 +139,7 @@ try client.registerCommandHandler("slowOperation") { command, args in
 
 ### Comprehensive Test Suite
 - ✅ **Basic Functionality**: 11 tests covering core features
-- ✅ **API Specification Parsing**: 12 tests covering JSON/YAML parsing and validation
+- ✅ **Manifest Parsing**: 12 tests covering JSON/YAML parsing and validation
 - ✅ **Client Functionality**: 10 tests covering client operations and edge cases
 - ✅ **Stateless Communication**: 8 tests verifying stateless behavior
 - ✅ **Timeout Handling**: 8 tests covering timeout scenarios
@@ -167,7 +167,7 @@ try client.registerCommandHandler("slowOperation") { command, args in
 - Timeout callbacks for both caller and consumer
 - Consumer receives timeout error if handler exceeds duration
 
-### API Specification Support ✅
+### Manifest Support ✅
 - Complete JSON/YAML parser with validation
 - Rich command definitions with arguments and responses
 - Support for complex validation constraints
@@ -198,11 +198,11 @@ try client.registerCommandHandler("slowOperation") { command, args in
 ```swift
 import Janus
 
-// Initialize client with API specification
+// Initialize client with Manifest
 let client = try JanusClient(
     socketPath: "/tmp/my-api.sock",
     channelId: "data-processing",
-    apiSpec: loadAPISpec()
+    manifest: loadManifest()
 )
 
 // Register command handlers

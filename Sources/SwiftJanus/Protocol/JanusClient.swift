@@ -5,7 +5,7 @@ import Foundation
 public class JanusClient {
     private let socketPath: String
     private let channelId: String
-    private var apiSpec: APISpecification?
+    private var manifest: Manifest?
     private let coreClient: CoreJanusClient
     private let defaultTimeout: TimeInterval
     private let enableValidation: Bool
@@ -44,26 +44,26 @@ public class JanusClient {
             datagramTimeout: datagramTimeout
         )
         
-        // Initialize apiSpec to nil first
-        self.apiSpec = nil
+        // Initialize manifest to nil first
+        self.manifest = nil
         
-        // Always fetch API specification from server (matching Go/Rust/TypeScript)
+        // Always fetch Manifest from server (matching Go/Rust/TypeScript)
         if enableValidation {
-            // Fetch API specification from server using spec command
+            // Fetch Manifest from server using spec command
             do {
                 let specResponse = try await sendBuiltinCommand("spec", args: nil, timeout: 10.0)
                 if specResponse.success,
                    let resultData = specResponse.result,
                    let jsonData = try? JSONSerialization.data(withJSONObject: resultData),
-                   let fetchedSpec = try? APISpecificationParser().parseJSON(jsonData) {
-                    self.apiSpec = fetchedSpec
+                   let fetchedSpec = try? ManifestParser().parseJSON(jsonData) {
+                    self.manifest = fetchedSpec
                 } else {
                     // If spec command fails, continue without validation
-                    self.apiSpec = nil
+                    self.manifest = nil
                 }
             } catch {
                 // If spec fetching fails, continue without validation (matching Go/Rust behavior)
-                self.apiSpec = nil
+                self.manifest = nil
             }
         }
     }
@@ -92,8 +92,8 @@ public class JanusClient {
             timeout: timeout ?? defaultTimeout
         )
         
-        // Validate command against API specification 
-        if enableValidation, let spec = apiSpec {
+        // Validate command against Manifest 
+        if enableValidation, let spec = manifest {
             try validateCommandAgainstSpec(spec, command: socketCommand)
         }
         
@@ -141,8 +141,8 @@ public class JanusClient {
             timeout: nil
         )
         
-        // Validate command against API specification 
-        if enableValidation, let spec = apiSpec {
+        // Validate command against Manifest 
+        if enableValidation, let spec = manifest {
             try validateCommandAgainstSpec(spec, command: socketCommand)
         }
         
@@ -196,15 +196,15 @@ public class JanusClient {
         }
     }
     
-    private func validateCommandAgainstSpec(_ spec: APISpecification, command: SocketCommand) throws {
-        // Check if command is reserved (built-in commands should never be in API specs)
+    private func validateCommandAgainstSpec(_ spec: Manifest, command: SocketCommand) throws {
+        // Check if command is reserved (built-in commands should never be in Manifests)
         if isBuiltinCommand(command.command) {
-            throw JanusError.validationError("Command '\(command.command)' is reserved and cannot be used from API specification")
+            throw JanusError.validationError("Command '\(command.command)' is reserved and cannot be used from Manifest")
         }
         
         // Check if channel exists
         guard let channel = spec.channels[command.channelId] else {
-            throw JanusError.validationError("Channel \(command.channelId) not found in API specification")
+            throw JanusError.validationError("Channel \(command.channelId) not found in Manifest")
         }
         
         // Check if command exists in channel
@@ -237,8 +237,8 @@ public class JanusClient {
         return socketPath
     }
     
-    public var apiSpecification: APISpecification? {
-        return apiSpec
+    public var manifest: Manifest? {
+        return manifest
     }
     
     /// Send a ping command and return success/failure
@@ -386,16 +386,16 @@ public class JanusClient {
     
     // MARK: - Command Handler Registration
     
-    /// Register a command handler with validation against API specification
+    /// Register a command handler with validation against Manifest
     public func registerCommandHandler(_ command: String, handler: @escaping (SocketCommand) throws -> [String: AnyCodable]) throws {
-        // Validate that command exists in API specification
-        guard let apiSpec = self.apiSpec else {
-            throw JanusError.validationError("Cannot register handler: API specification not loaded")
+        // Validate that command exists in Manifest
+        guard let manifest = self.manifest else {
+            throw JanusError.validationError("Cannot register handler: Manifest not loaded")
         }
         
         // Check if command exists in the current channel
-        guard let channel = apiSpec.channels[channelId] else {
-            throw JanusError.validationError("Channel \(channelId) not found in API specification")
+        guard let channel = manifest.channels[channelId] else {
+            throw JanusError.validationError("Channel \(channelId) not found in Manifest")
         }
         
         guard channel.commands.keys.contains(command) else {

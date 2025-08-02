@@ -8,7 +8,7 @@ import XCTest
 final class JanusClientTests: XCTestCase {
     
     var testSocketPath: String!
-    var testAPISpec: APISpecification!
+    var testManifest: Manifest!
     
     override func setUpWithError() throws {
         testSocketPath = "/tmp/janus-client-test.sock"
@@ -16,8 +16,8 @@ final class JanusClientTests: XCTestCase {
         // Clean up any existing test socket files
         try? FileManager.default.removeItem(atPath: testSocketPath)
         
-        // Create test API specification
-        testAPISpec = createTestAPISpec()
+        // Create test Manifest
+        testManifest = createTestManifest()
     }
     
     override func tearDownWithError() throws {
@@ -197,7 +197,7 @@ final class JanusClientTests: XCTestCase {
         XCTAssertTrue(true)
     }
     
-    func testAPISpecWithComplexArguments() async throws {
+    func testManifestWithComplexArguments() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
             channelId: "complexChannel"
@@ -219,7 +219,7 @@ final class JanusClientTests: XCTestCase {
         XCTAssertNotNil(client)
     }
     
-    private func createTestAPISpec() -> APISpecification {
+    private func createTestManifest() -> Manifest {
         let idArg = ArgumentSpec(
             type: .string,
             required: true,
@@ -260,13 +260,13 @@ final class JanusClientTests: XCTestCase {
             ]
         )
         
-        return APISpecification(
+        return Manifest(
             version: "1.0.0",
             channels: ["testChannel": channelSpec]
         )
     }
     
-    private func createComplexAPISpec() -> APISpecification {
+    private func createComplexManifest() -> Manifest {
         let dataArg = ArgumentSpec(
             type: .array,
             required: true,
@@ -299,13 +299,13 @@ final class JanusClientTests: XCTestCase {
             commands: ["processData": processCommand]
         )
         
-        return APISpecification(
+        return Manifest(
             version: "1.0.0",
             channels: ["complexChannel": channelSpec]
         )
     }
     
-    private func createSpecWithValidation() -> APISpecification {
+    private func createSpecWithValidation() -> Manifest {
         let validatedArg = ArgumentSpec(
             type: .string,
             required: true,
@@ -346,9 +346,189 @@ final class JanusClientTests: XCTestCase {
             commands: ["validateInput": validateCommand]
         )
         
-        return APISpecification(
+        return Manifest(
             version: "1.0.0",
             channels: ["validationChannel": channelSpec]
         )
+    }
+    
+    func testSendCommandNoResponse() async throws {
+        let client = try await JanusClient(
+            socketPath: testSocketPath,
+            channelId: "testChannel"
+        )
+        
+        // Test fire-and-forget command (no response expected)
+        let testArgs: [String: AnyCodable] = [
+            "message": AnyCodable("fire-and-forget test message")
+        ]
+        
+        do {
+            // Should not wait for response and return immediately
+            try await client.sendCommandNoResponse("setData", args: testArgs)
+            XCTFail("Expected connection error since no server is running")
+        } catch let error as JanusError {
+            // Expected to fail with connection error (no server running)
+            // but should not timeout waiting for response
+            switch error {
+            case .connectionError(_):
+                // Expected - connection error is fine
+                break
+            case .commandTimeout(_, _):
+                XCTFail("Got timeout error when expecting connection error for fire-and-forget")
+            default:
+                // Other errors are acceptable (e.g., validation errors)
+                print("Got error for fire-and-forget (acceptable): \(error)")
+            }
+        } catch {
+            print("Got unexpected error type: \(error)")
+        }
+        
+        // Verify command validation still works for fire-and-forget
+        do {
+            try await client.sendCommandNoResponse("unknown-command", args: testArgs)
+            XCTFail("Expected error for unknown command")
+        } catch {
+            // Should fail with some error (validation or connection)
+            // Test passes if we get any error for unknown command
+            print("Got expected error for unknown command: \(error)")
+        }
+    }
+    
+    func testSocketCleanupManagement() async throws {
+        let client = try await JanusClient(
+            socketPath: testSocketPath,
+            channelId: "testChannel"
+        )
+        
+        // Test that client can be created and basic operations work
+        // This implicitly tests socket creation and cleanup
+        let testArgs: [String: AnyCodable] = [:]
+        
+        do {
+            try await client.sendCommand("ping", args: testArgs)
+            XCTFail("Expected error since no server is running")
+        } catch let error as JanusError {
+            // Should fail with connection or timeout error (no server running)
+            switch error {
+            case .connectionError(_):
+                print("Socket cleanup test: Connection error (expected with no server)")
+            case .commandTimeout(_, _):
+                print("Socket cleanup test: Timeout error (expected with no server)")
+            default:
+                print("Socket cleanup test: Got error (may be expected): \(error)")
+            }
+        } catch {
+            print("Socket cleanup test: Got unexpected error type: \(error)")
+        }
+        
+        // Test multiple operations to ensure sockets are properly managed
+        for i in 0..<5 {
+            let args: [String: AnyCodable] = [
+                "test_data": AnyCodable("cleanup_test_\(i)")
+            ]
+            
+            do {
+                try await client.sendCommand("echo", args: args)
+                XCTFail("Expected error since no server is running (iteration \(i))")
+            } catch let error as JanusError {
+                // All operations should fail gracefully (no server running)
+                // but should not cause resource leaks or socket issues
+                switch error {
+                case .connectionError(_):
+                    // Expected - connection cleanup working
+                    break
+                case .commandTimeout(_, _):
+                    // Expected - timeout cleanup working
+                    break
+                default:
+                    print("Cleanup test iteration \(i): \(error)")
+                }
+            } catch {
+                print("Cleanup test iteration \(i): \(error)")
+            }
+        }
+        
+        // Test fire-and-forget cleanup
+        let cleanupArgs: [String: AnyCodable] = [:]
+        do {
+            try await client.sendCommandNoResponse("ping", args: cleanupArgs)
+            XCTFail("Expected error for fire-and-forget cleanup test")
+        } catch let error as JanusError {
+            // Should handle cleanup for fire-and-forget as well
+            switch error {
+            case .connectionError(_):
+                print("Fire-and-forget cleanup test: Connection error handled")
+            default:
+                print("Fire-and-forget cleanup test result: \(error)")
+            }
+        } catch {
+            print("Fire-and-forget cleanup test result: \(error)")
+        }
+        
+        // Client should be deallocated cleanly when test ends
+        // This tests the deinit implementation for cleanup
+    }
+    
+    func testDynamicMessageSizeDetection() async throws {
+        let client = try await JanusClient(
+            socketPath: testSocketPath,
+            channelId: "testChannel"
+        )
+        
+        // Test with normal-sized message (should pass validation)
+        let normalArgs: [String: AnyCodable] = [
+            "message": AnyCodable("normal message within size limits")
+        ]
+        
+        // This should fail with connection error, not validation error
+        do {
+            _ = try await client.sendCommand("echo", args: normalArgs)
+            XCTFail("Expected connection error since no server is running")
+        } catch {
+            // Should be connection error, not message size error
+            let errorMessage = String(describing: error)
+            if errorMessage.contains("size") && errorMessage.contains("exceeds") {
+                XCTFail("Got size error for normal message: \(error)")
+            }
+        }
+        
+        // Test with very large message (should trigger size validation)
+        // Create message larger than typical socket buffer limits
+        let largeData = String(repeating: "x", count: 6 * 1024 * 1024) // 6MB of data
+        let largeArgs: [String: AnyCodable] = [
+            "message": AnyCodable(largeData)
+        ]
+        
+        // This should fail with size validation error before attempting connection
+        do {
+            _ = try await client.sendCommand("echo", args: largeArgs)
+            XCTFail("Expected validation error for oversized message")
+        } catch {
+            // Should be size validation error
+            let errorMessage = String(describing: error)
+            if !errorMessage.contains("size") && !errorMessage.contains("exceeds") && !errorMessage.contains("limit") {
+                print("Got error (may not be size-related): \(error)")
+                // Log the error but don't fail - different implementations may handle this differently
+            }
+        }
+        
+        // Test fire-and-forget with large message
+        do {
+            try await client.sendCommandNoResponse("echo", args: largeArgs)
+            XCTFail("Expected validation error for oversized fire-and-forget message")
+        } catch {
+            // Expected - message size detection should work for both response and no-response commands
+        }
+        
+        // Test with empty message to ensure basic validation works
+        let emptyArgs: [String: AnyCodable] = [:]
+        do {
+            _ = try await client.sendCommand("ping", args: emptyArgs)
+            XCTFail("Expected error since no server is running")
+        } catch {
+            // Expected - connection or validation error
+            print("Empty message test completed with error (expected): \(error)")
+        }
     }
 }

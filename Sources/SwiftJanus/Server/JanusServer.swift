@@ -119,14 +119,14 @@ public struct ServerState {
 public class JanusServer {
     private var handlers: [String: JanusCommandHandler] = [:]
     private var isRunning = false
-    private let apiSpecification: APISpecification?
+    private let manifest: Manifest?
     private let config: ServerConfig
     private var serverState = ServerState()
     private let eventEmitter = ServerEventEmitter()
     private let stateQueue = DispatchQueue(label: "server.state", attributes: .concurrent)
     
-    public init(apiSpecification: APISpecification? = nil, config: ServerConfig = ServerConfig()) {
-        self.apiSpecification = apiSpecification
+    public init(manifest: Manifest? = nil, config: ServerConfig = ServerConfig()) {
+        self.manifest = manifest
         self.config = config
         // Register default commands that match other implementations
         registerDefaultHandlers()
@@ -401,9 +401,9 @@ public class JanusServer {
             result = commandResult
         }
         
-        // Validate response against API specification if available
-        if let apiSpec = self.apiSpecification, !result.isEmpty {
-            let validator = ResponseValidator(specification: apiSpec)
+        // Validate response against Manifest if available
+        if let manifest = self.manifest, !result.isEmpty {
+            let validator = ResponseValidator(specification: manifest)
             // Convert AnyCodable result to [String: Any] for validation
             let resultDict = result.mapValues { $0.value }
             let validationResult = validator.validateCommandResponse(
@@ -422,7 +422,7 @@ public class JanusServer {
             channelId: channelId,
             success: success,
             result: result.isEmpty ? nil : result,
-            error: success ? nil : SocketError(code: "COMMAND_ERROR", message: result["error"]?.value as? String ?? "Unknown error", details: nil),
+            error: success ? nil : JSONRPCError.create(code: .internalError, details: result["error"]?.value as? String ?? "Unknown error"),
             timestamp: Date().timeIntervalSince1970
         )
         

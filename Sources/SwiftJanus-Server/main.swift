@@ -9,7 +9,7 @@ func main() async {
         // Parse command line arguments
         let arguments = CommandLine.arguments
         var socketPath = "/tmp/swift_test_server.sock"
-        var specPath = "test-api-spec.json"
+        var specPath = "test-manifest.json"
         
         print("Arguments: \(arguments)")
         
@@ -53,13 +53,13 @@ func main() async {
         }
         
         do {
-            // Load API specification using the library
-            let parser = APISpecificationParser()
+            // Load Manifest using the library
+            let parser = ManifestParser()
             let specData = try Data(contentsOf: URL(fileURLWithPath: specPath))
-            let apiSpec = try parser.parseJSON(specData)
+            let manifest = try parser.parseJSON(specData)
             
-            print("API specification loaded successfully")
-            print("Channels: \(apiSpec.channels.keys.joined(separator: ", "))")
+            print("Manifest loaded successfully")
+            print("Channels: \(manifest.channels.keys.joined(separator: ", "))")
             fflush(stdout)
             
             // Create SOCK_DGRAM server using high-level API

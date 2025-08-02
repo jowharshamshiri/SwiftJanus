@@ -48,7 +48,7 @@ public struct SocketResponse: Codable, Sendable {
     public let channelId: String
     public let success: Bool
     public let result: [String: AnyCodable]?
-    public let error: SocketError?
+    public let error: JSONRPCError?
     public let timestamp: Double
     
     public init(
@@ -56,7 +56,7 @@ public struct SocketResponse: Codable, Sendable {
         channelId: String,
         success: Bool,
         result: [String: AnyCodable]? = nil,
-        error: SocketError? = nil,
+        error: JSONRPCError? = nil,
         timestamp: Double = Date().timeIntervalSince1970
     ) {
         self.commandId = commandId
@@ -66,6 +66,7 @@ public struct SocketResponse: Codable, Sendable {
         self.error = error
         self.timestamp = timestamp
     }
+    
 }
 
 /// Error information in socket responses

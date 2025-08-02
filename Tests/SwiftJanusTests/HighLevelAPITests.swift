@@ -6,7 +6,7 @@ import Foundation
 final class HighLevelAPITests: XCTestCase {
     
     var testSocketPath: String!
-    var testAPISpec: APISpecification!
+    var testManifest: Manifest!
     
     override func setUpWithError() throws {
         testSocketPath = "/tmp/janus-highlevel-test.sock"
@@ -14,8 +14,8 @@ final class HighLevelAPITests: XCTestCase {
         // Clean up any existing test socket files
         try? FileManager.default.removeItem(atPath: testSocketPath)
         
-        // Create test API specification
-        testAPISpec = createHighLevelTestAPISpec()
+        // Create test Manifest
+        testManifest = createHighLevelTestManifest()
     }
     
     override func tearDownWithError() throws {
@@ -110,7 +110,7 @@ final class HighLevelAPITests: XCTestCase {
         XCTAssertNotNil(decoded.args)
     }
     
-    private func createHighLevelTestAPISpec() -> APISpecification {
+    private func createHighLevelTestManifest() -> Manifest {
         let messageArg = ArgumentSpec(
             type: .string,
             required: true,
@@ -153,7 +153,7 @@ final class HighLevelAPITests: XCTestCase {
             ]
         )
         
-        return APISpecification(
+        return Manifest(
             version: "1.0.0",
             channels: ["testChannel": channelSpec]
         )

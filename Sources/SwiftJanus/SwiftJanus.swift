@@ -17,4 +17,4 @@ public typealias SocketClient = JanusClient
 // Re-export core protocol types for convenience
 public typealias Command = SocketCommand
 public typealias Response = SocketResponse
-public typealias ServerError = SocketError
+public typealias ServerError = JSONRPCError

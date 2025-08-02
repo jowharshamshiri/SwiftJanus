@@ -1,10 +1,33 @@
-// APISpecification.swift
-// API specification models for Janus
+// Manifest.swift
+// Manifest models for Janus
 
 import Foundation
 
-/// Represents the complete API specification document
-public struct APISpecification: Codable, Sendable {
+// MARK: - Utility Types
+
+/// Box class to enable recursive type definitions in structs
+public final class Box<T>: Codable, Sendable where T: Codable & Sendable {
+    public let value: T
+    
+    public init(_ value: T) {
+        self.value = value
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.value = try container.decode(T.self)
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(value)
+    }
+}
+
+// MARK: - Core Manifest
+
+/// Represents the complete Manifest document
+public struct Manifest: Codable, Sendable {
     public let version: String
     public let name: String?
     public let channels: [String: ChannelSpec]
@@ -54,13 +77,14 @@ public struct CommandSpec: Codable, Sendable {
     }
 }
 
-/// Specification for command arguments
+/// Specification for command arguments  
 public struct ArgumentSpec: Codable, Sendable {
     public let type: ArgumentType
     private let _required: Bool?
     public let description: String?
     public let defaultValue: AnyCodable?
     public let validation: ValidationSpec?
+    public let items: Box<ArgumentSpec>?  // For array types - matches Go implementation
     
     // Computed property that defaults to false like Go
     public var required: Bool {
@@ -73,6 +97,7 @@ public struct ArgumentSpec: Codable, Sendable {
         case description
         case defaultValue
         case validation
+        case items
     }
     
     public init(
@@ -80,13 +105,15 @@ public struct ArgumentSpec: Codable, Sendable {
         required: Bool = false,
         description: String? = nil,
         defaultValue: AnyCodable? = nil,
-        validation: ValidationSpec? = nil
+        validation: ValidationSpec? = nil,
+        items: ArgumentSpec? = nil
     ) {
         self.type = type
         self._required = required
         self.description = description
         self.defaultValue = defaultValue
         self.validation = validation
+        self.items = items.map { Box($0) }
     }
 }
 
@@ -95,15 +122,18 @@ public struct ResponseSpec: Codable, Sendable {
     public let type: ArgumentType?
     public let properties: [String: ArgumentSpec]?
     public let description: String?
+    public let items: Box<ArgumentSpec>?  // For array response types - matches Go implementation
     
     public init(
         type: ArgumentType? = nil,
         properties: [String: ArgumentSpec]? = nil,
-        description: String? = nil
+        description: String? = nil,
+        items: ArgumentSpec? = nil
     ) {
         self.type = type
         self.properties = properties
         self.description = description
+        self.items = items.map { Box($0) }
     }
 }
 

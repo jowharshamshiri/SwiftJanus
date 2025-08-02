@@ -7,7 +7,7 @@ struct SwiftJanusClient {
         // Parse command line arguments
         let arguments = CommandLine.arguments
         var socketPath = "/tmp/swift_test_server.sock"
-        var specPath = "test-api-spec.json"
+        var specPath = "test-manifest.json"
         
         // Parse command line arguments
         for i in 0..<arguments.count - 1 {
@@ -20,16 +20,16 @@ struct SwiftJanusClient {
         
         print("Connecting Swift client to: \(socketPath)")
         
-        // Load API specification from file
+        // Load Manifest from file
         let specData = try Data(contentsOf: URL(fileURLWithPath: specPath))
-        let parser = APISpecificationParser()
-        let apiSpec = try parser.parseJSON(specData)
+        let parser = ManifestParser()
+        let manifest = try parser.parseJSON(specData)
         
         // Create SOCK_DGRAM client
         let client = JanusClient(
             socketPath: socketPath,
             channelId: "test",
-            apiSpec: apiSpec,
+            manifest: manifest,
             maxMessageSize: 65536,
             defaultTimeout: 30.0,
             datagramTimeout: 5.0,

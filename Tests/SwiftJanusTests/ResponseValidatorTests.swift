@@ -1,19 +1,19 @@
 // ResponseValidatorTests.swift
 // Comprehensive tests for Swift ResponseValidator
-// Validates all response validation scenarios against API specifications
+// Validates all response validation scenarios against Manifests
 
 import XCTest
 @testable import SwiftJanus
 
 final class ResponseValidatorTests: XCTestCase {
     var validator: ResponseValidator!
-    var testApiSpec: APISpecification!
+    var testManifest: Manifest!
     
     override func setUp() {
         super.setUp()
         
-        // Create test API specification matching TypeScript/Go test structure
-        testApiSpec = APISpecification(
+        // Create test Manifest matching TypeScript/Go test structure
+        testManifest = Manifest(
             version: "1.0.0",
             name: "Test API",
             channels: [
@@ -128,12 +128,14 @@ final class ResponseValidatorTests: XCTestCase {
                                     "items": ArgumentSpec(
                                         type: .array,
                                         required: true,
-                                        description: "Array of strings"
+                                        description: "Array of strings",
+                                        items: ArgumentSpec(type: .string, description: "String item")
                                     ),
                                     "numbers": ArgumentSpec(
                                         type: .array,
                                         required: false,
-                                        description: "Array of numbers"
+                                        description: "Array of numbers",
+                                        items: ArgumentSpec(type: .number, description: "Number item")
                                     )
                                 ],
                                 description: "Array test response"
@@ -170,12 +172,12 @@ final class ResponseValidatorTests: XCTestCase {
             ]
         )
         
-        validator = ResponseValidator(specification: testApiSpec)
+        validator = ResponseValidator(specification: testManifest)
     }
     
     override func tearDown() {
         validator = nil
-        testApiSpec = nil
+        testManifest = nil
         super.tearDown()
     }
     
@@ -374,8 +376,14 @@ final class ResponseValidatorTests: XCTestCase {
         ]
         
         let invalidResult = validator.validateCommandResponse(invalidResponse, channelId: "test", commandName: "array_test")
-        // Note: Array item validation is not fully implemented yet, so this test focuses on type validation
-        XCTAssertTrue(invalidResult.valid || !invalidResult.valid, "Array validation test placeholder")
+        
+        // Array item validation is now implemented in Swift (matching Go/TypeScript)
+        // This should validate individual item types and reject invalid arrays
+        XCTAssertFalse(invalidResult.valid, "Expected invalid response for mismatched array item types")
+        
+        // Verify specific validation errors for array items
+        XCTAssertTrue(invalidResult.errors.contains { $0.field.contains("[") }, 
+                     "Should have array index validation errors")
     }
     
     // MARK: - Error Handling Tests
@@ -404,8 +412,8 @@ final class ResponseValidatorTests: XCTestCase {
     
     func testHandleMissingResponseSpecification() {
         // Create a command without response specification
-        var modifiedApiSpec = testApiSpec!
-        var testChannel = modifiedApiSpec.channels["test"]!
+        var modifiedManifest = testManifest!
+        var testChannel = modifiedManifest.channels["test"]!
         testChannel = ChannelSpec(
             name: testChannel.name,
             description: testChannel.description,
@@ -417,14 +425,14 @@ final class ResponseValidatorTests: XCTestCase {
                 )
             ]) { _, new in new }
         )
-        modifiedApiSpec = APISpecification(
-            version: modifiedApiSpec.version,
-            name: modifiedApiSpec.name,
-            channels: modifiedApiSpec.channels.merging(["test": testChannel]) { _, new in new },
-            models: modifiedApiSpec.models
+        modifiedManifest = Manifest(
+            version: modifiedManifest.version,
+            name: modifiedManifest.name,
+            channels: modifiedManifest.channels.merging(["test": testChannel]) { _, new in new },
+            models: modifiedManifest.models
         )
         
-        let modifiedValidator = ResponseValidator(specification: modifiedApiSpec)
+        let modifiedValidator = ResponseValidator(specification: modifiedManifest)
         let response: [String: Any] = ["status": "ok"]
         
         let result = modifiedValidator.validateCommandResponse(response, channelId: "test", commandName: "no_response")
@@ -497,7 +505,7 @@ final class ResponseValidatorTests: XCTestCase {
     
     func testHandleModelReferences() {
         // This test is a placeholder for model reference functionality
-        // which could be implemented in the future by extending the current API specification structure
+        // which could be implemented in the future by extending the current Manifest structure
         
         let response: [String: Any] = [
             "id": "user123",
@@ -507,9 +515,9 @@ final class ResponseValidatorTests: XCTestCase {
         
         // For now, we just test that the system handles the UserInfo model structure correctly
         // when integrated with a ResponseSpec that references it
-        XCTAssertNotNil(testApiSpec.models?["UserInfo"], "Expected UserInfo model to exist")
+        XCTAssertNotNil(testManifest.models?["UserInfo"], "Expected UserInfo model to exist")
         
-        let userModel = testApiSpec.models!["UserInfo"]!
+        let userModel = testManifest.models!["UserInfo"]!
         XCTAssertEqual(userModel.type, .object, "Expected object type")
         XCTAssertEqual(userModel.properties.count, 3, "Expected 3 properties")
         XCTAssertEqual(userModel.required?.count, 2, "Expected 2 required fields")

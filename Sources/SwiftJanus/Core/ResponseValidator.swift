@@ -1,6 +1,6 @@
 // ResponseValidator.swift
 // Response validation for Swift Janus implementation
-// Validates command handler responses against API specification ResponseSpec models
+// Validates command handler responses against Manifest ResponseSpec models
 // Achieves 100% parity with TypeScript, Go, and Rust implementations
 
 import Foundation
@@ -41,11 +41,11 @@ public struct ValidationResult: Codable, Sendable {
     }
 }
 
-/// Response validator that validates command handler responses against API specification ResponseSpec models
+/// Response validator that validates command handler responses against Manifest ResponseSpec models
 public class ResponseValidator {
-    private let specification: APISpecification
+    private let specification: Manifest
     
-    public init(specification: APISpecification) {
+    public init(specification: Manifest) {
         self.specification = specification
     }
     
@@ -78,7 +78,7 @@ public class ResponseValidator {
                 valid: false,
                 errors: [ValidationError(
                     field: "channelId",
-                    message: "Channel '\(channelId)' not found in API specification",
+                    message: "Channel '\(channelId)' not found in Manifest",
                     expected: "valid channel ID",
                     actual: AnyCodable(channelId)
                 )],
@@ -495,8 +495,19 @@ public class ResponseValidator {
     
     /// Get array item specification
     private func getArrayItemSpec(_ spec: SpecType) -> SpecType? {
-        // For now, return nil as Swift specs don't currently have items specifications
-        // This would need to be implemented when array item specs are added to Swift specifications
+        // Return items specification for array validation - now implemented
+        switch spec {
+        case .argument(let argumentSpec):
+            if let itemsBox = argumentSpec.items {
+                return .argument(itemsBox.value)
+            }
+        case .response(let responseSpec):
+            if let itemsBox = responseSpec.items {
+                return .argument(itemsBox.value)
+            }
+        case .model:
+            break // Models don't have items directly
+        }
         return nil
     }
 }

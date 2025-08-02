@@ -8,7 +8,7 @@ import XCTest
 final class SecurityTests: XCTestCase {
     
     var testSocketPath: String!
-    var testAPISpec: APISpecification!
+    var testManifest: Manifest!
     
     override func setUpWithError() throws {
         testSocketPath = "/tmp/janus-security-test.sock"
@@ -16,7 +16,7 @@ final class SecurityTests: XCTestCase {
         // Clean up any existing test socket files
         try? FileManager.default.removeItem(atPath: testSocketPath)
         
-        // Create test API specification
+        // Create test Manifest
         let argSpec = ArgumentSpec(
             type: .string,
             required: true,
@@ -34,7 +34,7 @@ final class SecurityTests: XCTestCase {
             commands: ["testCommand": commandSpec]
         )
         
-        testAPISpec = APISpecification(
+        testManifest = Manifest(
             version: "1.0.0",
             channels: ["testChannel": channelSpec]
         )
