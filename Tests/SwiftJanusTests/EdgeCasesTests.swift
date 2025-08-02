@@ -78,8 +78,8 @@ final class EdgeCasesTests: XCTestCase {
         XCTAssertEqual(array?.count, 5)
     }
     
-    func testSocketCommandWithEmptyArgs() throws {
-        let command = SocketCommand(
+    func testJanusCommandWithEmptyArgs() throws {
+        let command = JanusCommand(
             channelId: "testChannel",
             command: "testCommand",
             args: nil
@@ -89,20 +89,20 @@ final class EdgeCasesTests: XCTestCase {
         let jsonData = try encoder.encode(command)
         
         let decoder = JSONDecoder()
-        let decodedCommand = try decoder.decode(SocketCommand.self, from: jsonData)
+        let decodedCommand = try decoder.decode(JanusCommand.self, from: jsonData)
         
         XCTAssertNil(decodedCommand.args)
         XCTAssertEqual(decodedCommand.channelId, "testChannel")
         XCTAssertEqual(decodedCommand.command, "testCommand")
     }
     
-    func testSocketResponseWithError() throws {
+    func testJanusResponseWithError() throws {
         let error = JSONRPCError.create(
             code: .internalError,
             details: "Internal server error"
         )
         
-        let response = SocketResponse(
+        let response = JanusResponse(
             commandId: "test-command",
             channelId: "testChannel",
             success: false,
@@ -114,7 +114,7 @@ final class EdgeCasesTests: XCTestCase {
         let jsonData = try encoder.encode(response)
         
         let decoder = JSONDecoder()
-        let decodedResponse = try decoder.decode(SocketResponse.self, from: jsonData)
+        let decodedResponse = try decoder.decode(JanusResponse.self, from: jsonData)
         
         XCTAssertFalse(decodedResponse.success)
         XCTAssertNotNil(decodedResponse.error)
@@ -228,7 +228,7 @@ final class EdgeCasesTests: XCTestCase {
             "largeArray": AnyCodable(Array(repeating: "item", count: 1000))
         ]
         
-        let command = SocketCommand(
+        let command = JanusCommand(
             channelId: "testChannel",
             command: "processLargeData",
             args: largeArgs
@@ -242,7 +242,7 @@ final class EdgeCasesTests: XCTestCase {
         
         // Should be able to deserialize
         let decoder = JSONDecoder()
-        let decodedCommand = try decoder.decode(SocketCommand.self, from: jsonData)
+        let decodedCommand = try decoder.decode(JanusCommand.self, from: jsonData)
         
         XCTAssertEqual(decodedCommand.command, "processLargeData")
         XCTAssertNotNil(decodedCommand.args)

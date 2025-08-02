@@ -121,7 +121,7 @@ struct JanusDgram: AsyncParsableCommand {
             
             buffer = buffer.prefix(bytesReceived)
             
-            guard let cmd = try? JSONDecoder().decode(SocketCommand.self, from: buffer) else {
+            guard let cmd = try? JSONDecoder().decode(JanusCommand.self, from: buffer) else {
                 print("Failed to parse datagram")
                 continue
             }
@@ -269,7 +269,7 @@ struct JanusDgram: AsyncParsableCommand {
         // Note: ResponseValidator integration would require Manifest loading
         // For now, responses are sent without validation in this standalone binary
         
-        let response = SocketResponse(
+        let response = JanusResponse(
             commandId: commandId,
             channelId: channelId,
             success: success,

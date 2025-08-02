@@ -197,8 +197,8 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(deserializedMessage.payload, testMessage.payload)
     }
     
-    func testSocketCommandSerialization() throws {
-        let testCommand = SocketCommand(
+    func testJanusCommandSerialization() throws {
+        let testCommand = JanusCommand(
             id: "test-id-123",
             channelId: "testChannel",
             command: "testCommand",
@@ -211,7 +211,7 @@ final class ProtocolTests: XCTestCase {
         
         // Test deserialization
         let decoder = JSONDecoder()
-        let deserializedCommand = try decoder.decode(SocketCommand.self, from: serializedData)
+        let deserializedCommand = try decoder.decode(JanusCommand.self, from: serializedData)
         
         XCTAssertEqual(deserializedCommand.id, testCommand.id)
         XCTAssertEqual(deserializedCommand.channelId, testCommand.channelId)
@@ -219,13 +219,13 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(deserializedCommand.args?.count, testCommand.args?.count)
     }
     
-    func testSocketResponseSerialization() throws {
+    func testJanusResponseSerialization() throws {
         let testError = JSONRPCError.create(
             code: .serverError,
             details: "Test error"
         )
         
-        let testResponse = SocketResponse(
+        let testResponse = JanusResponse(
             commandId: "test-response-id",
             channelId: "testChannel",
             success: false,
@@ -239,7 +239,7 @@ final class ProtocolTests: XCTestCase {
         
         // Test deserialization  
         let decoder = JSONDecoder()
-        let deserializedResponse = try decoder.decode(SocketResponse.self, from: serializedData)
+        let deserializedResponse = try decoder.decode(JanusResponse.self, from: serializedData)
         
         XCTAssertEqual(deserializedResponse.commandId, testResponse.commandId)
         XCTAssertEqual(deserializedResponse.channelId, testResponse.channelId)

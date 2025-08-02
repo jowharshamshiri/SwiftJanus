@@ -33,7 +33,7 @@ class ServerFeaturesTests: XCTestCase {
     }
     
     // Helper function to send command and wait for response
-    func sendCommandAndWait(_ socketPath: String, command: SocketCommand, timeout: TimeInterval = 2.0) async throws -> SocketResponse {
+    func sendCommandAndWait(_ socketPath: String, command: JanusCommand, timeout: TimeInterval = 2.0) async throws -> JanusResponse {
         // Create client socket
         let clientSocket = Darwin.socket(AF_UNIX, SOCK_DGRAM, 0)
         guard clientSocket != -1 else {
@@ -74,7 +74,7 @@ class ServerFeaturesTests: XCTestCase {
         defer { try? FileManager.default.removeItem(atPath: responseSocketPath) }
         
         // Create command with response path
-        let commandWithResponse = SocketCommand(
+        let commandWithResponse = JanusCommand(
             id: command.id,
             channelId: command.channelId,
             command: command.command,
@@ -121,7 +121,7 @@ class ServerFeaturesTests: XCTestCase {
             
             if bytesReceived > 0 {
                 let responseData = buffer.prefix(bytesReceived)
-                let response = try JSONDecoder().decode(SocketResponse.self, from: responseData)
+                let response = try JSONDecoder().decode(JanusResponse.self, from: responseData)
                 return response
             } else if bytesReceived == 0 {
                 throw JanusError.connectionClosed("Response socket closed")
@@ -151,7 +151,7 @@ class ServerFeaturesTests: XCTestCase {
         try await Task.sleep(nanoseconds: 100_000_000) // 100ms
         
         // Send test command
-        let command = SocketCommand(
+        let command = JanusCommand(
             id: "test-001",
             channelId: "test",
             command: "test_command",
@@ -186,11 +186,11 @@ class ServerFeaturesTests: XCTestCase {
         // Test multiple concurrent clients
         let clientCount = 3
         
-        await withTaskGroup(of: Result<SocketResponse, Error>.self) { group in
+        await withTaskGroup(of: Result<JanusResponse, Error>.self) { group in
             for i in 0..<clientCount {
                 group.addTask {
                     do {
-                        let command = SocketCommand(
+                        let command = JanusCommand(
                             id: "client-\(i)",
                             channelId: "test-client-\(i)",
                             command: "ping",
@@ -261,7 +261,7 @@ class ServerFeaturesTests: XCTestCase {
         try await Task.sleep(nanoseconds: 200_000_000) // 200ms
         
         // Send test command to trigger command and response events
-        let command = SocketCommand(
+        let command = JanusCommand(
             id: "event-test",
             channelId: "test",
             command: "ping",
@@ -343,7 +343,7 @@ class ServerFeaturesTests: XCTestCase {
         let commandIds = ["cmd1", "cmd2", "cmd3"]
         
         for cmdId in commandIds {
-            let command = SocketCommand(
+            let command = JanusCommand(
                 id: cmdId,
                 channelId: "test",
                 command: "track_test",
@@ -384,7 +384,7 @@ class ServerFeaturesTests: XCTestCase {
         try await Task.sleep(nanoseconds: 100_000_000) // 100ms
         
         // Send command that doesn't have a handler (should generate error)
-        let command = SocketCommand(
+        let command = JanusCommand(
             id: "error-test",
             channelId: "test",
             command: "nonexistent_command",
@@ -419,7 +419,7 @@ class ServerFeaturesTests: XCTestCase {
         
         // Send multiple commands from same "client" (same channel)
         for i in 0..<3 {
-            let command = SocketCommand(
+            let command = JanusCommand(
                 id: "activity-test-\(i)",
                 channelId: "test-client", // Same channel = same client
                 command: "ping",
@@ -461,7 +461,7 @@ class ServerFeaturesTests: XCTestCase {
         try await Task.sleep(nanoseconds: 100_000_000) // 100ms
         
         // Send slow command with short timeout
-        let command = SocketCommand(
+        let command = JanusCommand(
             id: "timeout-test",
             channelId: "test",
             command: "slow_command",
@@ -516,7 +516,7 @@ class ServerFeaturesTests: XCTestCase {
         
         // Server should have created new socket (old file was cleaned up)
         // We can verify this by checking if we can send a command
-        let command = SocketCommand(
+        let command = JanusCommand(
             id: "cleanup-test",
             channelId: "test",
             command: "ping",

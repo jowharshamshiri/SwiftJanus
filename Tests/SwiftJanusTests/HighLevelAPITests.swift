@@ -92,7 +92,7 @@ final class HighLevelAPITests: XCTestCase {
     }
     
     func testDatagramMessageSerialization() throws {
-        let command = SocketCommand(
+        let command = JanusCommand(
             channelId: "testChannel",
             command: "ping",
             args: ["message": AnyCodable("hello")]
@@ -103,7 +103,7 @@ final class HighLevelAPITests: XCTestCase {
         let data = try encoder.encode(command)
         
         let decoder = JSONDecoder()
-        let decoded = try decoder.decode(SocketCommand.self, from: data)
+        let decoded = try decoder.decode(JanusCommand.self, from: data)
         
         XCTAssertEqual(decoded.channelId, "testChannel")
         XCTAssertEqual(decoded.command, "ping")

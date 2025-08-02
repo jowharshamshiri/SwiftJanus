@@ -152,8 +152,8 @@ final class TimeoutTests: XCTestCase {
         XCTAssertEqual(errorCount, 3)
     }
     
-    func testSocketCommandTimeoutField() throws {
-        let command = SocketCommand(
+    func testJanusCommandTimeoutField() throws {
+        let command = JanusCommand(
             channelId: "testChannel",
             command: "testCommand",
             args: ["key": AnyCodable("value")],
@@ -165,15 +165,15 @@ final class TimeoutTests: XCTestCase {
         let data = try encoder.encode(command)
         
         let decoder = JSONDecoder()
-        let decodedCommand = try decoder.decode(SocketCommand.self, from: data)
+        let decodedCommand = try decoder.decode(JanusCommand.self, from: data)
         
         XCTAssertEqual(decodedCommand.timeout, 15.0)
         XCTAssertEqual(decodedCommand.channelId, "testChannel")
         XCTAssertEqual(decodedCommand.command, "testCommand")
     }
     
-    func testSocketCommandWithoutTimeout() throws {
-        let command = SocketCommand(
+    func testJanusCommandWithoutTimeout() throws {
+        let command = JanusCommand(
             channelId: "testChannel",
             command: "testCommand",
             args: ["key": AnyCodable("value")]
@@ -185,7 +185,7 @@ final class TimeoutTests: XCTestCase {
         let data = try encoder.encode(command)
         
         let decoder = JSONDecoder()
-        let decodedCommand = try decoder.decode(SocketCommand.self, from: data)
+        let decodedCommand = try decoder.decode(JanusCommand.self, from: data)
         
         XCTAssertNil(decodedCommand.timeout)
         XCTAssertEqual(decodedCommand.channelId, "testChannel")

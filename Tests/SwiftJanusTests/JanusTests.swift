@@ -64,14 +64,14 @@ final class JanusTests: XCTestCase {
         XCTAssertEqual(decodedSpec.channels.count, manifest.channels.count)
     }
     
-    func testSocketCommandSerialization() throws {
+    func testJanusCommandSerialization() throws {
         let args: [String: AnyCodable] = [
             "stringArg": AnyCodable("test"),
             "intArg": AnyCodable(42),
             "boolArg": AnyCodable(true)
         ]
         
-        let command = SocketCommand(
+        let command = JanusCommand(
             channelId: "testChannel",
             command: "testCommand",
             args: args
@@ -81,7 +81,7 @@ final class JanusTests: XCTestCase {
         let jsonData = try encoder.encode(command)
         
         let decoder = JSONDecoder()
-        let decodedCommand = try decoder.decode(SocketCommand.self, from: jsonData)
+        let decodedCommand = try decoder.decode(JanusCommand.self, from: jsonData)
         
         XCTAssertEqual(decodedCommand.channelId, command.channelId)
         XCTAssertEqual(decodedCommand.command, command.command)
@@ -89,13 +89,13 @@ final class JanusTests: XCTestCase {
         XCTAssertNotNil(decodedCommand.args)
     }
     
-    func testSocketResponseSerialization() throws {
+    func testJanusResponseSerialization() throws {
         let result: [String: AnyCodable] = [
             "status": AnyCodable("success"),
             "data": AnyCodable(["key": "value"])
         ]
         
-        let response = SocketResponse(
+        let response = JanusResponse(
             commandId: "test-command-id",
             channelId: "testChannel",
             success: true,
@@ -106,7 +106,7 @@ final class JanusTests: XCTestCase {
         let jsonData = try encoder.encode(response)
         
         let decoder = JSONDecoder()
-        let decodedResponse = try decoder.decode(SocketResponse.self, from: jsonData)
+        let decodedResponse = try decoder.decode(JanusResponse.self, from: jsonData)
         
         XCTAssertEqual(decodedResponse.commandId, response.commandId)
         XCTAssertEqual(decodedResponse.channelId, response.channelId)
@@ -259,7 +259,7 @@ final class JanusTests: XCTestCase {
         }
         
         // Test error response creation  
-        let socketResponse = SocketResponse(
+        let janusResponse = JanusResponse(
             commandId: "test-cmd",
             channelId: "test-channel",
             success: false,
@@ -268,12 +268,12 @@ final class JanusTests: XCTestCase {
             timestamp: Date().timeIntervalSince1970
         )
         
-        XCTAssertNotNil(socketResponse.error, "Expected error response to contain JSONRPCError")
-        XCTAssertFalse(socketResponse.success, "Error response should not be successful")
+        XCTAssertNotNil(janusResponse.error, "Expected error response to contain JSONRPCError")
+        XCTAssertFalse(janusResponse.success, "Error response should not be successful")
         
         // Test JSON serialization of error response
         let encoder = JSONEncoder()
-        let jsonData = try encoder.encode(socketResponse)
+        let jsonData = try encoder.encode(janusResponse)
         
         // Verify JSON contains proper JSON-RPC error structure
         let jsonObject = try JSONSerialization.jsonObject(with: jsonData, options: []) as? [String: Any]

@@ -147,7 +147,7 @@ public class MessageFraming {
         
         if envelope.type == "command" {
             do {
-                let cmd = try JSONDecoder().decode(SocketCommand.self, from: payloadData)
+                let cmd = try JSONDecoder().decode(JanusCommand.self, from: payloadData)
                 try validateCommandStructure(cmd)
                 message = .command(cmd)
             } catch {
@@ -158,7 +158,7 @@ public class MessageFraming {
             }
         } else {
             do {
-                let resp = try JSONDecoder().decode(SocketResponse.self, from: payloadData)
+                let resp = try JSONDecoder().decode(JanusResponse.self, from: payloadData)
                 try validateResponseStructure(resp)
                 message = .response(resp)
             } catch {
@@ -272,7 +272,7 @@ public class MessageFraming {
         let message: MessageFramingMessage
         if rawValue["command"] != nil {
             do {
-                let cmd = try JSONDecoder().decode(SocketCommand.self, from: messageBuffer)
+                let cmd = try JSONDecoder().decode(JanusCommand.self, from: messageBuffer)
                 message = .command(cmd)
             } catch {
                 throw MessageFramingError(
@@ -282,7 +282,7 @@ public class MessageFraming {
             }
         } else if rawValue["commandId"] != nil {
             do {
-                let resp = try JSONDecoder().decode(SocketResponse.self, from: messageBuffer)
+                let resp = try JSONDecoder().decode(JanusResponse.self, from: messageBuffer)
                 message = .response(resp)
             } catch {
                 throw MessageFramingError(
@@ -302,7 +302,7 @@ public class MessageFraming {
     
     // MARK: - Private Validation Methods
     
-    private func validateCommandStructure(_ cmd: SocketCommand) throws {
+    private func validateCommandStructure(_ cmd: JanusCommand) throws {
         if cmd.id.isEmpty {
             throw MessageFramingError(
                 message: "Command missing required string field: id",
@@ -323,7 +323,7 @@ public class MessageFraming {
         }
     }
     
-    private func validateResponseStructure(_ resp: SocketResponse) throws {
+    private func validateResponseStructure(_ resp: JanusResponse) throws {
         if resp.commandId.isEmpty {
             throw MessageFramingError(
                 message: "Response missing required field: commandId",
@@ -341,8 +341,8 @@ public class MessageFraming {
 
 /// Message enum for framing operations
 public enum MessageFramingMessage: Equatable {
-    case command(SocketCommand)
-    case response(SocketResponse)
+    case command(JanusCommand)
+    case response(JanusResponse)
     
     public static func == (lhs: MessageFramingMessage, rhs: MessageFramingMessage) -> Bool {
         switch (lhs, rhs) {

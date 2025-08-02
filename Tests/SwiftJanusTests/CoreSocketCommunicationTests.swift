@@ -162,7 +162,7 @@ final class CoreSocketCommunicationTests: XCTestCase {
         XCTAssertEqual(responseBindResult, 0, "Failed to bind response socket")
         
         // Create command with reply_to field
-        let command = SocketCommand(
+        let command = JanusCommand(
             channelId: "test-channel",
             command: "test-command",
             replyTo: responseSocketPath,
@@ -192,7 +192,7 @@ final class CoreSocketCommunicationTests: XCTestCase {
         XCTAssertGreaterThan(receiveResult, 0, "Failed to receive datagram")
         
         let receivedData = Data(buffer[0..<receiveResult])
-        let receivedCommand = try JSONDecoder().decode(SocketCommand.self, from: receivedData)
+        let receivedCommand = try JSONDecoder().decode(JanusCommand.self, from: receivedData)
         
         XCTAssertEqual(receivedCommand.channelId, "test-channel", "Channel ID mismatch")
         XCTAssertEqual(receivedCommand.command, "test-command", "Command mismatch")
@@ -216,7 +216,7 @@ final class CoreSocketCommunicationTests: XCTestCase {
         XCTAssertEqual(bindResult, 0, "Failed to bind server socket")
         
         // Create fire-and-forget command (no reply_to field)
-        let command = SocketCommand(
+        let command = JanusCommand(
             channelId: "test-channel", 
             command: "fire-and-forget",
             replyTo: nil,
@@ -246,7 +246,7 @@ final class CoreSocketCommunicationTests: XCTestCase {
         XCTAssertGreaterThan(receiveResult, 0, "Failed to receive fire-and-forget datagram")
         
         let receivedData = Data(buffer[0..<receiveResult])
-        let receivedCommand = try JSONDecoder().decode(SocketCommand.self, from: receivedData)
+        let receivedCommand = try JSONDecoder().decode(JanusCommand.self, from: receivedData)
         
         XCTAssertNil(receivedCommand.replyTo, "Fire-and-forget command should have nil replyTo")
         XCTAssertEqual(receivedCommand.command, "fire-and-forget", "Command mismatch")

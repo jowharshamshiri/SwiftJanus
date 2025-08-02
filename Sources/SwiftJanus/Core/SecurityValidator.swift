@@ -342,7 +342,7 @@ public final class SecurityValidator {
     // MARK: - Comprehensive Security Check
     
     /// Perform comprehensive security validation on a socket command
-    public static func validateSocketCommand(_ command: SocketCommand) throws {
+    public static func validateJanusCommand(_ command: JanusCommand) throws {
         try validateCommandId(command.id)
         try validateChannelName(command.channelId)
         try validateCommandName(command.command)

@@ -77,13 +77,13 @@ public class JanusClient {
         _ command: String,
         args: [String: AnyCodable]? = nil,
         timeout: TimeInterval? = nil
-    ) async throws -> SocketResponse {
+    ) async throws -> JanusResponse {
         // Generate command ID and response socket path
         let commandId = UUID().uuidString
         let responseSocketPath = coreClient.generateResponseSocketPath()
         
         // Create socket command
-        let socketCommand = SocketCommand(
+        let janusCommand = JanusCommand(
             id: commandId,
             channelId: channelId,
             command: command,
@@ -94,19 +94,19 @@ public class JanusClient {
         
         // Validate command against Manifest 
         if enableValidation, let spec = manifest {
-            try validateCommandAgainstSpec(spec, command: socketCommand)
+            try validateCommandAgainstSpec(spec, command: janusCommand)
         }
         
         // Serialize command
         let encoder = JSONEncoder()
-        let commandData = try encoder.encode(socketCommand)
+        let commandData = try encoder.encode(janusCommand)
         
         // Send datagram and wait for response
         let responseData = try await coreClient.sendDatagram(commandData, responseSocketPath: responseSocketPath)
         
         // Deserialize response
         let decoder = JSONDecoder()
-        let response = try decoder.decode(SocketResponse.self, from: responseData)
+        let response = try decoder.decode(JanusResponse.self, from: responseData)
         
         // Validate response correlation
         guard response.commandId == commandId else {
@@ -132,7 +132,7 @@ public class JanusClient {
         let commandId = UUID().uuidString
         
         // Create socket command (no replyTo field)
-        let socketCommand = SocketCommand(
+        let janusCommand = JanusCommand(
             id: commandId,
             channelId: channelId,
             command: command,
@@ -143,12 +143,12 @@ public class JanusClient {
         
         // Validate command against Manifest 
         if enableValidation, let spec = manifest {
-            try validateCommandAgainstSpec(spec, command: socketCommand)
+            try validateCommandAgainstSpec(spec, command: janusCommand)
         }
         
         // Serialize command
         let encoder = JSONEncoder()
-        let commandData = try encoder.encode(socketCommand)
+        let commandData = try encoder.encode(janusCommand)
         
         // Send datagram without waiting for response
         try await coreClient.sendDatagramNoResponse(commandData)
@@ -196,7 +196,7 @@ public class JanusClient {
         }
     }
     
-    private func validateCommandAgainstSpec(_ spec: Manifest, command: SocketCommand) throws {
+    private func validateCommandAgainstSpec(_ spec: Manifest, command: JanusCommand) throws {
         // Check if command is reserved (built-in commands should never be in Manifests)
         if isBuiltinCommand(command.command) {
             throw JanusError.validationError("Command '\(command.command)' is reserved and cannot be used from Manifest")
@@ -237,9 +237,6 @@ public class JanusClient {
         return socketPath
     }
     
-    public var manifest: Manifest? {
-        return manifest
-    }
     
     /// Send a ping command and return success/failure
     /// Convenience method for testing connectivity with a simple ping
@@ -265,13 +262,13 @@ public class JanusClient {
         _ command: String,
         args: [String: AnyCodable]? = nil,
         timeout: TimeInterval
-    ) async throws -> SocketResponse {
+    ) async throws -> JanusResponse {
         // Generate command ID and response socket path
         let commandId = UUID().uuidString
         let responseSocketPath = coreClient.generateResponseSocketPath()
         
         // Create socket command for built-in command
-        let socketCommand = SocketCommand(
+        let janusCommand = JanusCommand(
             id: commandId,
             channelId: channelId,
             command: command,
@@ -282,14 +279,14 @@ public class JanusClient {
         
         // Serialize command
         let encoder = JSONEncoder()
-        let commandData = try encoder.encode(socketCommand)
+        let commandData = try encoder.encode(janusCommand)
         
         // Send datagram and wait for response
         let responseData = try await coreClient.sendDatagram(commandData, responseSocketPath: responseSocketPath)
         
         // Deserialize response
         let decoder = JSONDecoder()
-        let response = try decoder.decode(SocketResponse.self, from: responseData)
+        let response = try decoder.decode(JanusResponse.self, from: responseData)
         
         // Validate response correlation
         guard response.commandId == commandId else {
@@ -310,7 +307,7 @@ public class JanusClient {
         _ command: String,
         args: [String: AnyCodable]? = nil,
         timeout: TimeInterval? = nil
-    ) async throws -> SocketResponse {
+    ) async throws -> JanusResponse {
         return try await withCheckedThrowingContinuation { continuation in
             let commandId = UUID().uuidString
             let effectiveTimeout = timeout ?? defaultTimeout
@@ -358,15 +355,15 @@ public class JanusClient {
     }
     
     /// Execute multiple commands in parallel
-    public func executeParallel(_ commands: [(command: String, args: [String: AnyCodable]?)]) async throws -> [SocketResponse] {
-        return try await withThrowingTaskGroup(of: SocketResponse.self) { group in
+    public func executeParallel(_ commands: [(command: String, args: [String: AnyCodable]?)]) async throws -> [JanusResponse] {
+        return try await withThrowingTaskGroup(of: JanusResponse.self) { group in
             for (command, args) in commands {
                 group.addTask {
                     try await self.sendCommand(command, args: args)
                 }
             }
             
-            var results: [SocketResponse] = []
+            var results: [JanusResponse] = []
             for try await result in group {
                 results.append(result)
             }
@@ -387,7 +384,7 @@ public class JanusClient {
     // MARK: - Command Handler Registration
     
     /// Register a command handler with validation against Manifest
-    public func registerCommandHandler(_ command: String, handler: @escaping (SocketCommand) throws -> [String: AnyCodable]) throws {
+    public func registerCommandHandler(_ command: String, handler: @escaping (JanusCommand) throws -> [String: AnyCodable]) throws {
         // Validate that command exists in Manifest
         guard let manifest = self.manifest else {
             throw JanusError.validationError("Cannot register handler: Manifest not loaded")
@@ -484,7 +481,7 @@ public class JanusChannelProxy {
         _ command: String,
         args: [String: AnyCodable]? = nil,
         timeout: TimeInterval? = nil
-    ) async throws -> SocketResponse {
+    ) async throws -> JanusResponse {
         // Create a temporary client with the target channel ID
         let proxyClient = try await JanusClient(
             socketPath: client.socketPathValue,

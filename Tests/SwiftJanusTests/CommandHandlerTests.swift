@@ -16,8 +16,8 @@ final class CommandHandlerTests: XCTestCase {
         command: String = "test-command",
         args: [String: AnyCodable] = [:],
         replyTo: String = "/tmp/test-reply.sock"
-    ) -> SocketCommand {
-        return SocketCommand(
+    ) -> JanusCommand {
+        return JanusCommand(
             id: id,
             channelId: channelId,
             command: command,

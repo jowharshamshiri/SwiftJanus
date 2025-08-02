@@ -89,7 +89,7 @@ final class JanusClientTests: XCTestCase {
         XCTAssertNotNil(client)
     }
     
-    func testSocketCommandValidation() async throws {
+    func testJanusCommandValidation() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel"

@@ -221,7 +221,7 @@ final class StatelessCommunicationTests: XCTestCase {
     }
     
     func testMessageSerialization() throws {
-        let command = SocketCommand(
+        let command = JanusCommand(
             channelId: "testChannel",
             command: "testCommand",
             args: ["key": AnyCodable("value")]
@@ -242,7 +242,7 @@ final class StatelessCommunicationTests: XCTestCase {
         XCTAssertEqual(decodedMessage.type, .command)
         
         // Test nested command decoding
-        let decodedCommand = try decoder.decode(SocketCommand.self, from: decodedMessage.payload)
+        let decodedCommand = try decoder.decode(JanusCommand.self, from: decodedMessage.payload)
         XCTAssertEqual(decodedCommand.channelId, "testChannel")
         XCTAssertEqual(decodedCommand.command, "testCommand")
     }

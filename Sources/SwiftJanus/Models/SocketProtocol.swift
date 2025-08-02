@@ -4,7 +4,7 @@
 import Foundation
 
 /// Command message sent over socket
-public struct SocketCommand: Codable, Sendable {
+public struct JanusCommand: Codable, Sendable {
     public let id: String
     public let channelId: String
     public let command: String
@@ -43,7 +43,7 @@ public struct SocketCommand: Codable, Sendable {
 }
 
 /// Response message sent over socket
-public struct SocketResponse: Codable, Sendable {
+public struct JanusResponse: Codable, Sendable {
     public let commandId: String
     public let channelId: String
     public let success: Bool

@@ -17,7 +17,7 @@ final class MessageFramingTests: XCTestCase {
     // MARK: - Encode Message Tests
     
     func testEncodeMessage_Command() {
-        let command = SocketCommand(
+        let command = JanusCommand(
             id: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             command: "ping",
@@ -42,7 +42,7 @@ final class MessageFramingTests: XCTestCase {
     }
     
     func testEncodeMessage_Response() {
-        let response = SocketResponse(
+        let response = JanusResponse(
             commandId: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             success: true,
@@ -62,7 +62,7 @@ final class MessageFramingTests: XCTestCase {
     func testEncodeMessage_TooLarge() {
         // Create a command with very large args
         let largeData = String(repeating: "x", count: 20 * 1024 * 1024) // 20MB
-        let command = SocketCommand(
+        let command = JanusCommand(
             id: "test-id",
             channelId: "test-service",
             command: "large",
@@ -85,7 +85,7 @@ final class MessageFramingTests: XCTestCase {
     // MARK: - Decode Message Tests
     
     func testDecodeMessage_Command() throws {
-        let originalCommand = SocketCommand(
+        let originalCommand = JanusCommand(
             id: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             command: "ping",
@@ -111,7 +111,7 @@ final class MessageFramingTests: XCTestCase {
     }
     
     func testDecodeMessage_Response() throws {
-        let originalResponse = SocketResponse(
+        let originalResponse = JanusResponse(
             commandId: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             success: true,
@@ -136,7 +136,7 @@ final class MessageFramingTests: XCTestCase {
     }
     
     func testDecodeMessage_MultipleMessages() throws {
-        let command = SocketCommand(
+        let command = JanusCommand(
             id: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             command: "ping",
@@ -145,7 +145,7 @@ final class MessageFramingTests: XCTestCase {
             timestamp: 1722248200
         )
         
-        let response = SocketResponse(
+        let response = JanusResponse(
             commandId: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             success: true,
@@ -191,7 +191,7 @@ final class MessageFramingTests: XCTestCase {
     }
     
     func testDecodeMessage_IncompleteMessage() throws {
-        let command = SocketCommand(
+        let command = JanusCommand(
             id: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             command: "ping",
@@ -227,7 +227,7 @@ final class MessageFramingTests: XCTestCase {
     // MARK: - Extract Messages Tests
     
     func testExtractMessages_MultipleComplete() throws {
-        let command = SocketCommand(
+        let command = JanusCommand(
             id: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             command: "ping",
@@ -236,7 +236,7 @@ final class MessageFramingTests: XCTestCase {
             timestamp: 1722248200
         )
         
-        let response = SocketResponse(
+        let response = JanusResponse(
             commandId: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             success: true,
@@ -265,7 +265,7 @@ final class MessageFramingTests: XCTestCase {
     }
     
     func testExtractMessages_PartialMessage() throws {
-        let command = SocketCommand(
+        let command = JanusCommand(
             id: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             command: "ping",
@@ -274,7 +274,7 @@ final class MessageFramingTests: XCTestCase {
             timestamp: 1722248200
         )
         
-        let response = SocketResponse(
+        let response = JanusResponse(
             commandId: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             success: true,
@@ -323,7 +323,7 @@ final class MessageFramingTests: XCTestCase {
     // MARK: - Calculate Framed Size Tests
     
     func testCalculateFramedSize() throws {
-        let command = SocketCommand(
+        let command = JanusCommand(
             id: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             command: "ping",
@@ -342,7 +342,7 @@ final class MessageFramingTests: XCTestCase {
     // MARK: - Direct Message Tests
     
     func testEncodeDirectMessage() throws {
-        let command = SocketCommand(
+        let command = JanusCommand(
             id: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             command: "ping",
@@ -362,7 +362,7 @@ final class MessageFramingTests: XCTestCase {
     }
     
     func testDecodeDirectMessage() throws {
-        let originalCommand = SocketCommand(
+        let originalCommand = JanusCommand(
             id: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             command: "ping",
@@ -388,7 +388,7 @@ final class MessageFramingTests: XCTestCase {
     }
     
     func testDirectRoundtripCommand() throws {
-        let originalCommand = SocketCommand(
+        let originalCommand = JanusCommand(
             id: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             command: "ping",
@@ -417,7 +417,7 @@ final class MessageFramingTests: XCTestCase {
     }
     
     func testDirectRoundtripResponse() throws {
-        let originalResponse = SocketResponse(
+        let originalResponse = JanusResponse(
             commandId: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             success: true,

@@ -2,12 +2,12 @@ import Foundation
 
 /// Pending command awaiting response
 public class PendingCommand {
-    let resolve: (SocketResponse) -> Void
+    let resolve: (JanusResponse) -> Void
     let reject: (Error) -> Void
     let timestamp: Date
     let timeout: TimeInterval
     
-    init(resolve: @escaping (SocketResponse) -> Void, reject: @escaping (Error) -> Void, timeout: TimeInterval) {
+    init(resolve: @escaping (JanusResponse) -> Void, reject: @escaping (Error) -> Void, timeout: TimeInterval) {
         self.resolve = resolve
         self.reject = reject
         self.timestamp = Date()
@@ -95,7 +95,7 @@ public class ResponseTracker {
     public func registerCommand(
         commandId: String,
         timeout: TimeInterval? = nil,
-        resolve: @escaping (SocketResponse) -> Void,
+        resolve: @escaping (JanusResponse) -> Void,
         reject: @escaping (Error) -> Void
     ) throws {
         try queue.sync(flags: .barrier) {
@@ -122,7 +122,7 @@ public class ResponseTracker {
     }
     
     /// Resolve a command with response
-    public func resolveCommand(commandId: String, response: SocketResponse) -> Bool {
+    public func resolveCommand(commandId: String, response: JanusResponse) -> Bool {
         return queue.sync(flags: .barrier) {
             guard let pendingCommand = pendingCommands.removeValue(forKey: commandId) else {
                 return false

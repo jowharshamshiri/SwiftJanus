@@ -1,7 +1,7 @@
 import Foundation
 
 /// Command handler function type for SOCK_DGRAM server
-public typealias JanusCommandHandler = (SocketCommand) -> Result<[String: AnyCodable], JanusError>
+public typealias JanusCommandHandler = (JanusCommand) -> Result<[String: AnyCodable], JanusError>
 
 /// Event handler function type for server events
 public typealias ServerEventHandler = (Any) -> Void
@@ -239,7 +239,7 @@ public class JanusServer {
     
     private func processReceivedDatagram(_ data: Data) async {
         do {
-            let cmd = try JSONDecoder().decode(SocketCommand.self, from: data)
+            let cmd = try JSONDecoder().decode(JanusCommand.self, from: data)
             print("Received datagram: \(cmd.command) (ID: \(cmd.id))")
             
             // Track client activity (using channelId as client identifier for SOCK_DGRAM)
@@ -272,7 +272,7 @@ public class JanusServer {
         let commandTask = Task {
             // Check if we have a custom handler
             if let handler = handlers[command] {
-                let socketCommand = SocketCommand(
+                let janusCommand = JanusCommand(
                     id: commandId,
                     channelId: channelId,
                     command: command,
@@ -282,7 +282,7 @@ public class JanusServer {
                     timestamp: Date().timeIntervalSince1970
                 )
                 
-                let handlerResult = handler(socketCommand)
+                let handlerResult = handler(janusCommand)
                 switch handlerResult {
                 case .success(let data):
                     return (true, data)
@@ -417,7 +417,7 @@ public class JanusServer {
             }
         }
         
-        let response = SocketResponse(
+        let response = JanusResponse(
             commandId: commandId,
             channelId: channelId,
             success: success,

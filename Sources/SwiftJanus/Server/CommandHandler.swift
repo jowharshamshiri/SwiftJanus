@@ -30,31 +30,31 @@ public enum HandlerResult<T> {
 public protocol CommandHandler {
     associatedtype Output: Codable
     
-    func handle(_ command: SocketCommand) async -> HandlerResult<Output>
+    func handle(_ command: JanusCommand) async -> HandlerResult<Output>
 }
 
 /// Synchronous handler wrapper for direct value responses
 public struct SyncHandler<Output: Codable>: CommandHandler, @unchecked Sendable {
-    private let handler: @Sendable (SocketCommand) -> HandlerResult<Output>
+    private let handler: @Sendable (JanusCommand) -> HandlerResult<Output>
     
-    public init(_ handler: @escaping @Sendable (SocketCommand) -> HandlerResult<Output>) {
+    public init(_ handler: @escaping @Sendable (JanusCommand) -> HandlerResult<Output>) {
         self.handler = handler
     }
     
-    public func handle(_ command: SocketCommand) async -> HandlerResult<Output> {
+    public func handle(_ command: JanusCommand) async -> HandlerResult<Output> {
         return handler(command)
     }
 }
 
 /// Asynchronous handler wrapper for direct value responses
 public struct AsyncHandler<Output: Codable>: CommandHandler, @unchecked Sendable {
-    private let handler: @Sendable (SocketCommand) async -> HandlerResult<Output>
+    private let handler: @Sendable (JanusCommand) async -> HandlerResult<Output>
     
-    public init(_ handler: @escaping @Sendable (SocketCommand) async -> HandlerResult<Output>) {
+    public init(_ handler: @escaping @Sendable (JanusCommand) async -> HandlerResult<Output>) {
         self.handler = handler
     }
     
-    public func handle(_ command: SocketCommand) async -> HandlerResult<Output> {
+    public func handle(_ command: JanusCommand) async -> HandlerResult<Output> {
         return await handler(command)
     }
 }
@@ -62,42 +62,42 @@ public struct AsyncHandler<Output: Codable>: CommandHandler, @unchecked Sendable
 // MARK: - Direct Value Handler Constructors
 
 /// Create a boolean handler
-public func boolHandler(_ handler: @escaping @Sendable (SocketCommand) -> Result<Bool, Error>) -> SyncHandler<Bool> {
+public func boolHandler(_ handler: @escaping @Sendable (JanusCommand) -> Result<Bool, Error>) -> SyncHandler<Bool> {
     return SyncHandler { command in
         HandlerResult.from(handler(command))
     }
 }
 
 /// Create a string handler
-public func stringHandler(_ handler: @escaping @Sendable (SocketCommand) -> Result<String, Error>) -> SyncHandler<String> {
+public func stringHandler(_ handler: @escaping @Sendable (JanusCommand) -> Result<String, Error>) -> SyncHandler<String> {
     return SyncHandler { command in
         HandlerResult.from(handler(command))
     }
 }
 
 /// Create an integer handler
-public func intHandler(_ handler: @escaping @Sendable (SocketCommand) -> Result<Int, Error>) -> SyncHandler<Int> {
+public func intHandler(_ handler: @escaping @Sendable (JanusCommand) -> Result<Int, Error>) -> SyncHandler<Int> {
     return SyncHandler { command in
         HandlerResult.from(handler(command))
     }
 }
 
 /// Create a double handler
-public func doubleHandler(_ handler: @escaping @Sendable (SocketCommand) -> Result<Double, Error>) -> SyncHandler<Double> {
+public func doubleHandler(_ handler: @escaping @Sendable (JanusCommand) -> Result<Double, Error>) -> SyncHandler<Double> {
     return SyncHandler { command in
         HandlerResult.from(handler(command))
     }
 }
 
 /// Create an array handler
-public func arrayHandler<T: Codable>(_ handler: @escaping @Sendable (SocketCommand) -> Result<[T], Error>) -> SyncHandler<[T]> {
+public func arrayHandler<T: Codable>(_ handler: @escaping @Sendable (JanusCommand) -> Result<[T], Error>) -> SyncHandler<[T]> {
     return SyncHandler { command in
         HandlerResult.from(handler(command))
     }
 }
 
 /// Create a custom object handler
-public func objectHandler<T: Codable>(_ handler: @escaping @Sendable (SocketCommand) -> Result<T, Error>) -> SyncHandler<T> {
+public func objectHandler<T: Codable>(_ handler: @escaping @Sendable (JanusCommand) -> Result<T, Error>) -> SyncHandler<T> {
     return SyncHandler { command in
         HandlerResult.from(handler(command))
     }
@@ -106,42 +106,42 @@ public func objectHandler<T: Codable>(_ handler: @escaping @Sendable (SocketComm
 // MARK: - Async Handler Constructors
 
 /// Create an async boolean handler
-public func asyncBoolHandler(_ handler: @escaping @Sendable (SocketCommand) async -> Result<Bool, Error>) -> AsyncHandler<Bool> {
+public func asyncBoolHandler(_ handler: @escaping @Sendable (JanusCommand) async -> Result<Bool, Error>) -> AsyncHandler<Bool> {
     return AsyncHandler { command in
         HandlerResult.from(await handler(command))
     }
 }
 
 /// Create an async string handler
-public func asyncStringHandler(_ handler: @escaping @Sendable (SocketCommand) async -> Result<String, Error>) -> AsyncHandler<String> {
+public func asyncStringHandler(_ handler: @escaping @Sendable (JanusCommand) async -> Result<String, Error>) -> AsyncHandler<String> {
     return AsyncHandler { command in
         HandlerResult.from(await handler(command))
     }
 }
 
 /// Create an async integer handler
-public func asyncIntHandler(_ handler: @escaping @Sendable (SocketCommand) async -> Result<Int, Error>) -> AsyncHandler<Int> {
+public func asyncIntHandler(_ handler: @escaping @Sendable (JanusCommand) async -> Result<Int, Error>) -> AsyncHandler<Int> {
     return AsyncHandler { command in
         HandlerResult.from(await handler(command))
     }
 }
 
 /// Create an async double handler
-public func asyncDoubleHandler(_ handler: @escaping @Sendable (SocketCommand) async -> Result<Double, Error>) -> AsyncHandler<Double> {
+public func asyncDoubleHandler(_ handler: @escaping @Sendable (JanusCommand) async -> Result<Double, Error>) -> AsyncHandler<Double> {
     return AsyncHandler { command in
         HandlerResult.from(await handler(command))
     }
 }
 
 /// Create an async array handler
-public func asyncArrayHandler<T: Codable>(_ handler: @escaping @Sendable (SocketCommand) async -> Result<[T], Error>) -> AsyncHandler<[T]> {
+public func asyncArrayHandler<T: Codable>(_ handler: @escaping @Sendable (JanusCommand) async -> Result<[T], Error>) -> AsyncHandler<[T]> {
     return AsyncHandler { command in
         HandlerResult.from(await handler(command))
     }
 }
 
 /// Create an async custom object handler
-public func asyncObjectHandler<T: Codable>(_ handler: @escaping @Sendable (SocketCommand) async -> Result<T, Error>) -> AsyncHandler<T> {
+public func asyncObjectHandler<T: Codable>(_ handler: @escaping @Sendable (JanusCommand) async -> Result<T, Error>) -> AsyncHandler<T> {
     return AsyncHandler { command in
         HandlerResult.from(await handler(command))
     }
@@ -151,11 +151,11 @@ public func asyncObjectHandler<T: Codable>(_ handler: @escaping @Sendable (Socke
 
 /// Type-erased handler for registry storage
 public protocol BoxedHandler: Sendable {
-    func handleBoxed(_ command: SocketCommand) async -> Result<Any, JSONRPCError>
+    func handleBoxed(_ command: JanusCommand) async -> Result<Any, JSONRPCError>
 }
 
 extension SyncHandler: BoxedHandler {
-    public func handleBoxed(_ command: SocketCommand) async -> Result<Any, JSONRPCError> {
+    public func handleBoxed(_ command: JanusCommand) async -> Result<Any, JSONRPCError> {
         let result = await handle(command)
         switch result {
         case .success(let value):
@@ -167,7 +167,7 @@ extension SyncHandler: BoxedHandler {
 }
 
 extension AsyncHandler: BoxedHandler {
-    public func handleBoxed(_ command: SocketCommand) async -> Result<Any, JSONRPCError> {
+    public func handleBoxed(_ command: JanusCommand) async -> Result<Any, JSONRPCError> {
         let result = await handle(command)
         switch result {
         case .success(let value):
@@ -206,7 +206,7 @@ public actor HandlerRegistry {
     }
     
     /// Execute a handler for a command
-    public func executeHandler(_ command: String, _ cmd: SocketCommand) async -> Result<Any, JSONRPCError> {
+    public func executeHandler(_ command: String, _ cmd: JanusCommand) async -> Result<Any, JSONRPCError> {
         guard let handler = handlers[command] else {
             return .failure(JSONRPCError.create(
                 code: .methodNotFound,
@@ -236,7 +236,7 @@ private struct TypedHandlerWrapper<H: CommandHandler & Sendable>: BoxedHandler {
         self.handler = handler
     }
     
-    func handleBoxed(_ command: SocketCommand) async -> Result<Any, JSONRPCError> {
+    func handleBoxed(_ command: JanusCommand) async -> Result<Any, JSONRPCError> {
         let result = await handler.handle(command)
         switch result {
         case .success(let value):
