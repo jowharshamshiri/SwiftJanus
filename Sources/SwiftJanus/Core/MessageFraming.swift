@@ -1,16 +1,5 @@
 import Foundation
 
-/// Message framing error with specific error codes
-public struct MessageFramingError: Error, Equatable {
-    public let message: String
-    public let code: String
-    
-    public init(message: String, code: String) {
-        self.message = message
-        self.code = code
-    }
-}
-
 /// Socket message envelope for framing
 public struct SocketMessageEnvelope: Codable, Equatable {
     public let type: String      // "command" or "response"
@@ -53,9 +42,9 @@ public class MessageFraming {
         
         // Validate message size
         if envelopeData.count > Self.maxMessageSize {
-            throw MessageFramingError(
-                message: "Message size \(envelopeData.count) exceeds maximum \(Self.maxMessageSize)",
-                code: "MESSAGE_TOO_LARGE"
+            throw JSONRPCError.create(
+                code: .messageFramingError,
+                details: "Message size \(envelopeData.count) exceeds maximum \(Self.maxMessageSize)"
             )
         }
         
@@ -75,9 +64,9 @@ public class MessageFraming {
     public func decodeMessage(_ buffer: Data) throws -> (message: MessageFramingMessage, remainingBuffer: Data) {
         // Check if we have at least the length prefix
         if buffer.count < Self.lengthPrefixSize {
-            throw MessageFramingError(
-                message: "Buffer too small for length prefix: \(buffer.count) < \(Self.lengthPrefixSize)",
-                code: "INCOMPLETE_LENGTH_PREFIX"
+            throw JSONRPCError.create(
+                code: .messageFramingError,
+                details: "Buffer too small for length prefix: \(buffer.count) < \(Self.lengthPrefixSize)"
             )
         }
         
@@ -89,25 +78,25 @@ public class MessageFraming {
         
         // Validate message length
         if messageLength > Self.maxMessageSize {
-            throw MessageFramingError(
-                message: "Message length \(messageLength) exceeds maximum \(Self.maxMessageSize)",
-                code: "MESSAGE_TOO_LARGE"
+            throw JSONRPCError.create(
+                code: .messageFramingError,
+                details: "Message length \(messageLength) exceeds maximum \(Self.maxMessageSize)"
             )
         }
         
         if messageLength == 0 {
-            throw MessageFramingError(
-                message: "Message length cannot be zero",
-                code: "ZERO_LENGTH_MESSAGE"
+            throw JSONRPCError.create(
+                code: .messageFramingError,
+                details: "Message length cannot be zero"
             )
         }
         
         // Check if we have the complete message
         let totalRequired = Self.lengthPrefixSize + Int(messageLength)
         if buffer.count < totalRequired {
-            throw MessageFramingError(
-                message: "Buffer too small for complete message: \(buffer.count) < \(totalRequired)",
-                code: "INCOMPLETE_MESSAGE"
+            throw JSONRPCError.create(
+                code: .messageFramingError,
+                details: "Buffer too small for complete message: \(buffer.count) < \(totalRequired)"
             )
         }
         
@@ -120,24 +109,24 @@ public class MessageFraming {
         do {
             envelope = try JSONDecoder().decode(SocketMessageEnvelope.self, from: messageBuffer)
         } catch {
-            throw MessageFramingError(
-                message: "Failed to parse message envelope JSON: \(error.localizedDescription)",
-                code: "INVALID_JSON_ENVELOPE"
+            throw JSONRPCError.create(
+                code: .messageFramingError,
+                details: "Failed to parse message envelope JSON: \(error.localizedDescription)"
             )
         }
         
         // Validate envelope structure
         if envelope.type.isEmpty || envelope.payload.isEmpty {
-            throw MessageFramingError(
-                message: "Message envelope missing required fields (type, payload)",
-                code: "MISSING_ENVELOPE_FIELDS"
+            throw JSONRPCError.create(
+                code: .messageFramingError,
+                details: "Message envelope missing required fields (type, payload)"
             )
         }
         
         if envelope.type != "command" && envelope.type != "response" {
-            throw MessageFramingError(
-                message: "Invalid message type: \(envelope.type)",
-                code: "INVALID_MESSAGE_TYPE"
+            throw JSONRPCError.create(
+                code: .messageFramingError,
+                details: "Invalid message type: \(envelope.type)"
             )
         }
         
@@ -151,9 +140,9 @@ public class MessageFraming {
                 try validateCommandStructure(cmd)
                 message = .command(cmd)
             } catch {
-                throw MessageFramingError(
-                    message: "Failed to parse command payload JSON: \(error.localizedDescription)",
-                    code: "INVALID_PAYLOAD_JSON"
+                throw JSONRPCError.create(
+                    code: .messageFramingError,
+                    details: "Failed to parse command payload JSON: \(error.localizedDescription)"
                 )
             }
         } else {
@@ -162,9 +151,9 @@ public class MessageFraming {
                 try validateResponseStructure(resp)
                 message = .response(resp)
             } catch {
-                throw MessageFramingError(
-                    message: "Failed to parse response payload JSON: \(error.localizedDescription)",
-                    code: "INVALID_PAYLOAD_JSON"
+                throw JSONRPCError.create(
+                    code: .messageFramingError,
+                    details: "Failed to parse response payload JSON: \(error.localizedDescription)"
                 )
             }
         }
@@ -182,8 +171,9 @@ public class MessageFraming {
                 let result = try decodeMessage(currentBuffer)
                 messages.append(result.message)
                 currentBuffer = result.remainingBuffer
-            } catch let error as MessageFramingError {
-                if error.code == "INCOMPLETE_LENGTH_PREFIX" || error.code == "INCOMPLETE_MESSAGE" {
+            } catch let error as JSONRPCError {
+                if let details = error.data?.details, 
+                   details.contains("Buffer too small for length prefix") || details.contains("Buffer too small for complete message") {
                     // Not enough data for complete message, save remaining buffer
                     break
                 }
@@ -213,9 +203,9 @@ public class MessageFraming {
         
         // Validate message size
         if messageData.count > Self.maxMessageSize {
-            throw MessageFramingError(
-                message: "Message size \(messageData.count) exceeds maximum \(Self.maxMessageSize)",
-                code: "MESSAGE_TOO_LARGE"
+            throw JSONRPCError.create(
+                code: .messageFramingError,
+                details: "Message size \(messageData.count) exceeds maximum \(Self.maxMessageSize)"
             )
         }
         
@@ -234,9 +224,9 @@ public class MessageFraming {
     public func decodeDirectMessage(_ buffer: Data) throws -> (message: MessageFramingMessage, remainingBuffer: Data) {
         // Check length prefix
         if buffer.count < Self.lengthPrefixSize {
-            throw MessageFramingError(
-                message: "Buffer too small for length prefix: \(buffer.count) < \(Self.lengthPrefixSize)",
-                code: "INCOMPLETE_LENGTH_PREFIX"
+            throw JSONRPCError.create(
+                code: .messageFramingError,
+                details: "Buffer too small for length prefix: \(buffer.count) < \(Self.lengthPrefixSize)"
             )
         }
         
@@ -247,9 +237,9 @@ public class MessageFraming {
         let totalRequired = Self.lengthPrefixSize + Int(messageLength)
         
         if buffer.count < totalRequired {
-            throw MessageFramingError(
-                message: "Buffer too small for complete message: \(buffer.count) < \(totalRequired)",
-                code: "INCOMPLETE_MESSAGE"
+            throw JSONRPCError.create(
+                code: .messageFramingError,
+                details: "Buffer too small for complete message: \(buffer.count) < \(totalRequired)"
             )
         }
         
@@ -262,9 +252,9 @@ public class MessageFraming {
         do {
             rawValue = try JSONSerialization.jsonObject(with: messageBuffer) as? [String: Any] ?? [:]
         } catch {
-            throw MessageFramingError(
-                message: "Failed to parse message JSON: \(error.localizedDescription)",
-                code: "INVALID_JSON"
+            throw JSONRPCError.create(
+                code: .messageFramingError,
+                details: "Failed to parse message JSON: \(error.localizedDescription)"
             )
         }
         
@@ -275,9 +265,9 @@ public class MessageFraming {
                 let cmd = try JSONDecoder().decode(JanusCommand.self, from: messageBuffer)
                 message = .command(cmd)
             } catch {
-                throw MessageFramingError(
-                    message: "Failed to parse command: \(error.localizedDescription)",
-                    code: "INVALID_COMMAND"
+                throw JSONRPCError.create(
+                    code: .messageFramingError,
+                    details: "Failed to parse command: \(error.localizedDescription)"
                 )
             }
         } else if rawValue["commandId"] != nil {
@@ -285,15 +275,15 @@ public class MessageFraming {
                 let resp = try JSONDecoder().decode(JanusResponse.self, from: messageBuffer)
                 message = .response(resp)
             } catch {
-                throw MessageFramingError(
-                    message: "Failed to parse response: \(error.localizedDescription)",
-                    code: "INVALID_RESPONSE"
+                throw JSONRPCError.create(
+                    code: .messageFramingError,
+                    details: "Failed to parse response: \(error.localizedDescription)"
                 )
             }
         } else {
-            throw MessageFramingError(
-                message: "Cannot determine message type",
-                code: "UNKNOWN_MESSAGE_TYPE"
+            throw JSONRPCError.create(
+                code: .messageFramingError,
+                details: "Cannot determine message type"
             )
         }
         
@@ -304,36 +294,36 @@ public class MessageFraming {
     
     private func validateCommandStructure(_ cmd: JanusCommand) throws {
         if cmd.id.isEmpty {
-            throw MessageFramingError(
-                message: "Command missing required string field: id",
-                code: "MISSING_COMMAND_FIELD"
+            throw JSONRPCError.create(
+                code: .messageFramingError,
+                details: "Command missing required string field: id"
             )
         }
         if cmd.channelId.isEmpty {
-            throw MessageFramingError(
-                message: "Command missing required string field: channelId",
-                code: "MISSING_COMMAND_FIELD"
+            throw JSONRPCError.create(
+                code: .messageFramingError,
+                details: "Command missing required string field: channelId"
             )
         }
         if cmd.command.isEmpty {
-            throw MessageFramingError(
-                message: "Command missing required string field: command",
-                code: "MISSING_COMMAND_FIELD"
+            throw JSONRPCError.create(
+                code: .messageFramingError,
+                details: "Command missing required string field: command"
             )
         }
     }
     
     private func validateResponseStructure(_ resp: JanusResponse) throws {
         if resp.commandId.isEmpty {
-            throw MessageFramingError(
-                message: "Response missing required field: commandId",
-                code: "MISSING_RESPONSE_FIELD"
+            throw JSONRPCError.create(
+                code: .messageFramingError,
+                details: "Response missing required field: commandId"
             )
         }
         if resp.channelId.isEmpty {
-            throw MessageFramingError(
-                message: "Response missing required field: channelId",
-                code: "MISSING_RESPONSE_FIELD"
+            throw JSONRPCError.create(
+                code: .messageFramingError,
+                details: "Response missing required field: channelId"
             )
         }
     }

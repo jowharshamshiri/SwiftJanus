@@ -74,10 +74,11 @@ final class MessageFramingTests: XCTestCase {
         let message = MessageFramingMessage.command(command)
         
         XCTAssertThrowsError(try framing.encodeMessage(message)) { error in
-            if let framingError = error as? MessageFramingError {
-                XCTAssertEqual(framingError.code, "MESSAGE_TOO_LARGE")
+            // Validate error code instead of error message content
+            if let jsonRPCError = error as? JSONRPCError {
+                XCTAssertEqual(jsonRPCError.code, -32011) // MessageFramingError code
             } else {
-                XCTFail("Expected MessageFramingError")
+                XCTFail("Expected JSONRPCError with MessageFramingError code")
             }
         }
     }
@@ -182,10 +183,11 @@ final class MessageFramingTests: XCTestCase {
         let shortBuffer = Data([0x00, 0x00]) // Only 2 bytes
         
         XCTAssertThrowsError(try framing.decodeMessage(shortBuffer)) { error in
-            if let framingError = error as? MessageFramingError {
-                XCTAssertEqual(framingError.code, "INCOMPLETE_LENGTH_PREFIX")
+            // Validate error code instead of error message content
+            if let jsonRPCError = error as? JSONRPCError {
+                XCTAssertEqual(jsonRPCError.code, -32011) // MessageFramingError code
             } else {
-                XCTFail("Expected MessageFramingError")
+                XCTFail("Expected JSONRPCError with MessageFramingError code")
             }
         }
     }
@@ -204,10 +206,11 @@ final class MessageFramingTests: XCTestCase {
         let truncated = encoded.prefix(encoded.count - 10) // Remove last 10 bytes
         
         XCTAssertThrowsError(try framing.decodeMessage(truncated)) { error in
-            if let framingError = error as? MessageFramingError {
-                XCTAssertEqual(framingError.code, "INCOMPLETE_MESSAGE")
+            // Validate error code instead of error message content
+            if let jsonRPCError = error as? JSONRPCError {
+                XCTAssertEqual(jsonRPCError.code, -32011) // MessageFramingError code
             } else {
-                XCTFail("Expected MessageFramingError")
+                XCTFail("Expected JSONRPCError with MessageFramingError code")
             }
         }
     }
@@ -216,10 +219,11 @@ final class MessageFramingTests: XCTestCase {
         let zeroLengthBuffer = Data([0x00, 0x00, 0x00, 0x00]) // 0 length
         
         XCTAssertThrowsError(try framing.decodeMessage(zeroLengthBuffer)) { error in
-            if let framingError = error as? MessageFramingError {
-                XCTAssertEqual(framingError.code, "ZERO_LENGTH_MESSAGE")
+            // Validate error code instead of error message content
+            if let jsonRPCError = error as? JSONRPCError {
+                XCTAssertEqual(jsonRPCError.code, -32011) // MessageFramingError code
             } else {
-                XCTFail("Expected MessageFramingError")
+                XCTFail("Expected JSONRPCError with MessageFramingError code")
             }
         }
     }

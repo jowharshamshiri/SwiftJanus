@@ -22,6 +22,11 @@ public enum JSONRPCErrorCode: Int, CaseIterable, Codable, Sendable {
     case securityViolation = -32009
     case resourceLimitExceeded = -32010
     
+    // Janus Protocol-Specific Error Codes (-32011 to -32013)
+    case messageFramingError = -32011
+    case responseTrackingError = -32012
+    case manifestValidationError = -32013
+    
     /// Returns the string representation of the error code
     public var stringValue: String {
         switch self {
@@ -41,6 +46,9 @@ public enum JSONRPCErrorCode: Int, CaseIterable, Codable, Sendable {
         case .configurationError: return "CONFIGURATION_ERROR"
         case .securityViolation: return "SECURITY_VIOLATION"
         case .resourceLimitExceeded: return "RESOURCE_LIMIT_EXCEEDED"
+        case .messageFramingError: return "MESSAGE_FRAMING_ERROR"
+        case .responseTrackingError: return "RESPONSE_TRACKING_ERROR"
+        case .manifestValidationError: return "MANIFEST_VALIDATION_ERROR"
         }
     }
     
@@ -63,6 +71,9 @@ public enum JSONRPCErrorCode: Int, CaseIterable, Codable, Sendable {
         case .configurationError: return "Configuration error"
         case .securityViolation: return "Security violation"
         case .resourceLimitExceeded: return "Resource limit exceeded"
+        case .messageFramingError: return "Message framing error"
+        case .responseTrackingError: return "Response tracking error"
+        case .manifestValidationError: return "Manifest validation error"
         }
     }
     
@@ -201,66 +212,7 @@ public struct JSONRPCError: Error, Codable, Sendable, Equatable {
     }
 }
 
-// MARK: - Legacy Error Mapping
-
-extension JSONRPCError {
-    /// Maps legacy JanusError cases to JSON-RPC error codes
-    public static func mapLegacyJanusError(_ error: JanusError) -> JSONRPCErrorCode {
-        switch error {
-        case .invalidChannel: return .invalidParams
-        case .unknownCommand: return .methodNotFound
-        case .missingRequiredArgument: return .invalidParams
-        case .invalidArgument: return .invalidParams
-        case .connectionRequired: return .serviceUnavailable
-        case .encodingFailed: return .internalError
-        case .decodingFailed: return .parseError
-        case .commandTimeout: return .handlerTimeout
-        case .handlerTimeout: return .handlerTimeout
-        case .resourceLimit: return .resourceLimitExceeded
-        case .invalidSocketPath: return .invalidParams
-        case .securityViolation: return .securityViolation
-        case .malformedData: return .parseError
-        case .messageTooLarge: return .resourceLimitExceeded
-        case .connectionError: return .serviceUnavailable
-        case .ioError: return .internalError
-        case .validationError: return .validationFailed
-        case .socketCreationFailed: return .socketError
-        case .bindFailed: return .socketError
-        case .sendFailed: return .socketError
-        case .receiveFailed: return .socketError
-        case .connectionClosed: return .serviceUnavailable
-        case .connectionTestFailed: return .serviceUnavailable
-        case .timeout: return .handlerTimeout
-        case .timeoutError: return .handlerTimeout
-        case .protocolError: return .internalError
-        }
-    }
-    
-    /// Creates a JSON-RPC error from a legacy JanusError
-    public static func fromLegacyJanusError(_ error: JanusError) -> JSONRPCError {
-        let code = mapLegacyJanusError(error)
-        let details = error.localizedDescription
-        return JSONRPCError.create(code: code, details: details)
-    }
-    
-    /// Maps legacy SocketError string codes to JSON-RPC error codes
-    public static func mapLegacySocketErrorCode(_ legacyCode: String) -> JSONRPCErrorCode {
-        switch legacyCode {
-        case "UNKNOWN_COMMAND": return .methodNotFound
-        case "VALIDATION_ERROR": return .validationFailed
-        case "INVALID_ARGUMENTS": return .invalidParams
-        case "HANDLER_ERROR": return .internalError
-        case "HANDLER_TIMEOUT": return .handlerTimeout
-        case "SOCKET_ERROR": return .socketError
-        case "SECURITY_VIOLATION": return .securityViolation
-        case "RESOURCE_LIMIT": return .resourceLimitExceeded
-        case "SERVICE_UNAVAILABLE": return .serviceUnavailable
-        case "AUTHENTICATION_FAILED": return .authenticationFailed
-        case "CONFIGURATION_ERROR": return .configurationError
-        default: return .serverError
-        }
-    }
-}
+// Legacy error mapping removed - all error handling now uses JSONRPCError directly
 
 // MARK: - CustomStringConvertible
 

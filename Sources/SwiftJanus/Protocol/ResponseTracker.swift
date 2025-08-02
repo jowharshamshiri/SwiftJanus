@@ -15,25 +15,6 @@ public class PendingCommand {
     }
 }
 
-/// Response tracking errors
-public enum ResponseTrackerError: Error, LocalizedError {
-    case commandNotFound(String)
-    case timeoutExceeded(String)
-    case trackerShutdown(String)
-    case maxPendingExceeded(String)
-    case invalidCommand(String)
-    
-    public var errorDescription: String? {
-        switch self {
-        case .commandNotFound(let details): return "Command not found: \(details)"
-        case .timeoutExceeded(let details): return "Command timeout exceeded: \(details)"
-        case .trackerShutdown(let details): return "Response tracker shutdown: \(details)"
-        case .maxPendingExceeded(let details): return "Max pending commands exceeded: \(details)"
-        case .invalidCommand(let details): return "Invalid command: \(details)"
-        }
-    }
-}
-
 /// Configuration for response tracker
 public struct TrackerConfig {
     let maxPendingCommands: Int
@@ -100,11 +81,11 @@ public class ResponseTracker {
     ) throws {
         try queue.sync(flags: .barrier) {
             guard !isShutdown else {
-                throw ResponseTrackerError.trackerShutdown("Response tracker has been shutdown")
+                throw JSONRPCError.create(code: .responseTrackingError, details: "Response tracker has been shutdown")
             }
             
             guard pendingCommands.count < config.maxPendingCommands else {
-                throw ResponseTrackerError.maxPendingExceeded("Maximum pending commands (\(config.maxPendingCommands)) exceeded")
+                throw JSONRPCError.create(code: .responseTrackingError, details: "Maximum pending commands (\(config.maxPendingCommands)) exceeded")
             }
             
             let effectiveTimeout = timeout ?? config.defaultTimeout
@@ -159,7 +140,7 @@ public class ResponseTracker {
     
     /// Cancel a specific command
     public func cancelCommand(commandId: String) -> Bool {
-        return rejectCommand(commandId: commandId, error: ResponseTrackerError.trackerShutdown("Command cancelled"))
+        return rejectCommand(commandId: commandId, error: JSONRPCError.create(code: .responseTrackingError, details: "Command cancelled"))
     }
     
     /// Cancel all pending commands
@@ -171,7 +152,7 @@ public class ResponseTracker {
             for commandId in commandIds {
                 if let pendingCommand = pendingCommands.removeValue(forKey: commandId) {
                     totalRejectedCommands += 1
-                    pendingCommand.reject(ResponseTrackerError.trackerShutdown("All commands cancelled"))
+                    pendingCommand.reject(JSONRPCError.create(code: .responseTrackingError, details: "All commands cancelled"))
                 }
             }
             
@@ -275,7 +256,7 @@ public class ResponseTracker {
             // Emit timeout event
             self.emit("timeout", data: ["commandId": commandId, "elapsedTime": Date().timeIntervalSince(pendingCommand.timestamp)])
             
-            pendingCommand.reject(ResponseTrackerError.timeoutExceeded("Command \(commandId) timed out after \(pendingCommand.timeout) seconds"))
+            pendingCommand.reject(JSONRPCError.create(code: .responseTrackingError, details: "Command \(commandId) timed out after \(pendingCommand.timeout) seconds"))
         }
     }
 }
