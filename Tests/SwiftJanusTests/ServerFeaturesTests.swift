@@ -8,8 +8,8 @@ class ServerFeaturesTests: XCTestCase {
     
     override func setUp() {
         super.setUp()
-        tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("janus-server-tests-\(UUID().uuidString)")
+        // Use shorter path to avoid Unix socket 108-character limit
+        tempDir = URL(fileURLWithPath: "/tmp/janus-\(UUID().uuidString.prefix(8))")
         try! FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
     }
     
@@ -41,25 +41,31 @@ class ServerFeaturesTests: XCTestCase {
         }
         defer { Darwin.close(clientSocket) }
         
-        // Create response socket
-        let responseSocketPath = tempDir.appendingPathComponent("response-\(command.id).sock").path
+        // Create response socket with shorter, unique path
+        let responseSocketPath = tempDir.appendingPathComponent("resp-\(UUID().uuidString.prefix(8)).sock").path
+        
+        // Validate socket path length (Unix socket limit is 108 characters)
+        guard responseSocketPath.utf8.count < 108 else {
+            throw JSONRPCError.create(code: .socketError, details: "Response socket path too long: \(responseSocketPath.count) chars")
+        }
+        
+        // Clean up any existing socket file
+        try? FileManager.default.removeItem(atPath: responseSocketPath)
+        
         let responseSocket = Darwin.socket(AF_UNIX, SOCK_DGRAM, 0)
         guard responseSocket != -1 else {
             throw JSONRPCError.create(code: .socketError, details: "Failed to create response socket")
         }
-        defer { Darwin.close(responseSocket) }
+        defer { 
+            Darwin.close(responseSocket)
+            try? FileManager.default.removeItem(atPath: responseSocketPath)
+        }
         
         // Bind response socket
         var responseAddr = sockaddr_un()
         responseAddr.sun_family = sa_family_t(AF_UNIX)
         let responsePathCString = responseSocketPath.cString(using: .utf8)!
-        withUnsafeMutablePointer(to: &responseAddr.sun_path) { ptr in
-            ptr.withMemoryRebound(to: CChar.self, capacity: responsePathCString.count) { pathPtr in
-                responsePathCString.withUnsafeBufferPointer { buffer in
-                    pathPtr.update(from: buffer.baseAddress!, count: buffer.count)
-                }
-            }
-        }
+        memcpy(&responseAddr.sun_path, responsePathCString, min(responsePathCString.count, 104))
         
         let bindResult = withUnsafePointer(to: &responseAddr) { addrPtr in
             addrPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
@@ -68,10 +74,9 @@ class ServerFeaturesTests: XCTestCase {
         }
         
         guard bindResult == 0 else {
-            throw JSONRPCError.create(code: .socketError, details: "Failed to bind response socket")
+            let errorCode = errno
+            throw JSONRPCError.create(code: .socketError, details: "Failed to bind response socket (errno: \(errorCode))")
         }
-        
-        defer { try? FileManager.default.removeItem(atPath: responseSocketPath) }
         
         // Create command with response path
         let commandWithResponse = JanusCommand(

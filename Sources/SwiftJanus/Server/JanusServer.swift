@@ -172,36 +172,58 @@ public class JanusServer {
         
         // Socket cleanup on start if configured
         if config.cleanupOnStart {
+            print("Cleaning up existing socket file")
             try? FileManager.default.removeItem(atPath: socketPath)
         }
         
         // Create SOCK_DGRAM socket
+        print("Creating socket...")
         let socketFD = Darwin.socket(AF_UNIX, SOCK_DGRAM, 0)
         guard socketFD != -1 else {
+            print("Failed to create socket, errno: \(errno)")
             throw JSONRPCError.create(code: .socketError, details: "Failed to create socket")
         }
+        print("Socket created with FD: \(socketFD)")
         
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
-        let pathCString = socketPath.cString(using: .utf8)!
-        withUnsafeMutablePointer(to: &addr.sun_path) { ptr in
-            ptr.withMemoryRebound(to: CChar.self, capacity: pathCString.count) { pathPtr in
-                pathCString.withUnsafeBufferPointer { buffer in
-                    pathPtr.update(from: buffer.baseAddress!, count: buffer.count)
-                }
+        
+        // Safely copy socket path to sun_path
+        guard socketPath.utf8.count < MemoryLayout.size(ofValue: addr.sun_path) else {
+            Darwin.close(socketFD)
+            throw JSONRPCError.create(code: .socketError, details: "Socket path too long")
+        }
+        
+        _ = withUnsafeMutablePointer(to: &addr.sun_path.0) { ptr in
+            socketPath.withCString { cString in
+                strcpy(ptr, cString)
             }
         }
         
         let bindResult = withUnsafePointer(to: &addr) { addrPtr in
             addrPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
-                Darwin.bind(socketFD, sockaddrPtr, socklen_t(MemoryLayout<sockaddr_un>.size))
+                // Calculate proper address length: sun_family (2 bytes) + path length + null terminator
+                let addressLength = socklen_t(MemoryLayout.offset(of: \sockaddr_un.sun_path)! + socketPath.utf8.count + 1)
+                return Darwin.bind(socketFD, sockaddrPtr, addressLength)
             }
         }
         
+        print("Attempting bind...")
         guard bindResult == 0 else {
+            let errorCode = errno
+            print("Bind failed with errno: \(errorCode), error: \(String(cString: strerror(errorCode)))")
             Darwin.close(socketFD)
-            throw JSONRPCError.create(code: .socketError, details: "Failed to bind socket")  
+            throw JSONRPCError.create(code: .socketError, details: "Failed to bind socket: \(String(cString: strerror(errorCode)))")  
         }
+        print("Bind successful")
+        
+        // Verify socket file was created
+        guard FileManager.default.fileExists(atPath: socketPath) else {
+            print("Socket file does not exist after bind: \(socketPath)")
+            Darwin.close(socketFD)
+            throw JSONRPCError.create(code: .socketError, details: "Socket file was not created after bind")
+        }
+        print("Socket file verified: \(socketPath)")
         
         defer {
             Darwin.close(socketFD)

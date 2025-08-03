@@ -2,6 +2,7 @@
 // Network failure scenario tests
 
 import XCTest
+import Foundation
 @testable import SwiftJanus
 
 @MainActor
@@ -9,9 +10,14 @@ final class NetworkFailureTests: XCTestCase {
     
     var testSocketPath: String!
     var testManifest: Manifest!
+    var tempDir: URL!
     
     override func setUpWithError() throws {
-        testSocketPath = "/tmp/janus-network-test.sock"
+        // Use shorter path to avoid Unix socket 108-character limit
+        tempDir = URL(fileURLWithPath: "/tmp/janus-net-\(UUID().uuidString.prefix(8))")
+        try! FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        
+        testSocketPath = tempDir.appendingPathComponent("janus-network-test.sock").path
         
         // Clean up any existing test socket files
         try? FileManager.default.removeItem(atPath: testSocketPath)
@@ -43,6 +49,11 @@ final class NetworkFailureTests: XCTestCase {
     override func tearDownWithError() throws {
         // Clean up test socket files
         try? FileManager.default.removeItem(atPath: testSocketPath)
+    }
+    
+    override func tearDown() {
+        try? FileManager.default.removeItem(at: tempDir)
+        super.tearDown()
     }
     
     // MARK: - Connection Failure Tests
@@ -97,7 +108,8 @@ final class NetworkFailureTests: XCTestCase {
     }
     
     func testConnectionTimeout() async throws {
-        // Connection timeout is handled internally by the datagram client
+        // Test connection timeout behavior with non-existent socket
+        // In SOCK_DGRAM architecture, timeout is handled by internal timeout manager
         let client = try await JanusClient(
             socketPath: testSocketPath,
             channelId: "testChannel"
@@ -106,18 +118,20 @@ final class NetworkFailureTests: XCTestCase {
         let startTime = Date()
         
         do {
-            _ = try await client.sendCommand("testCommand")
-            XCTFail("Connection should timeout")
-        } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
-            // Should timeout quickly or fail immediately in SOCK_DGRAM
+            // Send command with very short timeout to test timeout mechanism
+            _ = try await client.sendCommand("ping", timeout: 0.1)
+            XCTFail("Command should timeout due to no server")
+        } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.handlerTimeout.rawValue {
+            // This is the expected timeout behavior
             let elapsedTime = Date().timeIntervalSince(startTime)
-            XCTAssertLessThan(elapsedTime, 1.0, "Connection should timeout quickly or fail immediately")
-            XCTAssertTrue(error.message.contains("timeout") || error.message.contains("Network is down") || error.message.contains("No such file or directory"), 
-                         "Error should indicate timeout, network failure, or socket not found")
+            XCTAssertGreaterThan(elapsedTime, 0.05, "Should have waited some time before timeout")
+            XCTAssertLessThan(elapsedTime, 0.5, "Should timeout quickly")
         } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
-            // Expected in SOCK_DGRAM architecture - connection test fails immediately
+            // In SOCK_DGRAM, immediate connection failure is also acceptable
+            let elapsedTime = Date().timeIntervalSince(startTime)
+            XCTAssertLessThan(elapsedTime, 0.5, "Should fail quickly if no server exists")
         } catch {
-            XCTFail("Unexpected error type: \(error)")
+            XCTFail("Expected timeout or server error, got: \(error)")
         }
     }
     

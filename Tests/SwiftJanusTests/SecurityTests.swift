@@ -180,10 +180,15 @@ final class SecurityTests: XCTestCase {
             } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
                 // Expected - no server running, but validation passed
             } catch let error as JSONRPCError {
-                // Should not get validation errors for string content
-                // (unless it exceeds length limits)
-                XCTAssertEqual(error.code, JSONRPCErrorCode.invalidParams.rawValue)
-                // Validated by error code - no need to check message text
+                // Large payloads can be rejected at different levels:
+                // -32602 (InvalidParams) for parameter validation
+                // -32011 (MessageFraming) for message size limits
+                let validErrorCodes = [
+                    JSONRPCErrorCode.invalidParams.rawValue,
+                    JSONRPCErrorCode.messageFramingError.rawValue
+                ]
+                XCTAssertTrue(validErrorCodes.contains(error.code), 
+                    "Expected InvalidParams (-32602) or MessageFraming (-32011), got \(error.code)")
                 // Only acceptable if it's due to length limits
                 XCTAssertTrue(maliciousArg.count > 1000, "Only very long strings should be rejected")
             } catch {
@@ -291,11 +296,16 @@ final class SecurityTests: XCTestCase {
             } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
                 // Expected - no server running
             } catch let error as JSONRPCError {
-                XCTAssertEqual(error.code, JSONRPCErrorCode.invalidParams.rawValue)
-                // Validated by error code - no need to check message text
+                // Large payloads can be rejected at different levels:
+                // -32602 (InvalidParams) for parameter validation
+                // -32011 (MessageFraming) for message size limits
+                let validErrorCodes = [
+                    JSONRPCErrorCode.invalidParams.rawValue,
+                    JSONRPCErrorCode.messageFramingError.rawValue
+                ]
+                XCTAssertTrue(validErrorCodes.contains(error.code), 
+                    "Expected InvalidParams (-32602) or MessageFraming (-32011), got \(error.code)")
                 // Large payload rejected due to size limits
-            } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.messageFramingError.rawValue {
-                // This is also acceptable - message size limit reached via message framing error
             } catch {
                 XCTFail("Unexpected error for large payload (size: \(size)): \(error)")
             }

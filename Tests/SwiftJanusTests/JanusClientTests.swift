@@ -35,34 +35,32 @@ final class JanusClientTests: XCTestCase {
     }
     
     func testClientInitializationWithInvalidChannel() async {
+        // Test truly invalid channel ID format (not just non-existent channel)
         do {
             _ = try await JanusClient(
                 socketPath: testSocketPath,
-                channelId: "nonExistentChannel"
+                channelId: "invalid/channel/id" // Contains forbidden characters
             )
-            XCTFail("Expected invalidChannel error")
+            XCTFail("Expected invalidChannel error for malformed channel ID")
         } catch let error as JSONRPCError {
-            if error.code == JSONRPCErrorCode.invalidParams.rawValue {
-                // Validated by error code - invalid channel confirmed
-            } else {
-                XCTFail("Expected invalidParams error code, got: \(error)")
-            }
+            XCTAssertEqual(error.code, JSONRPCErrorCode.invalidParams.rawValue, 
+                "Expected InvalidParams for malformed channel ID")
         } catch {
-            XCTFail("Expected JSONRPCError, got \(error)")
+            XCTFail("Expected JSONRPCError, got: \(error)")
         }
     }
     
     func testClientInitializationWithInvalidSpec() async {
-        // Test invalid channel (spec is now fetched from server)
+        // Test invalid socket path (since spec is now fetched from server)
         do {
             _ = try await JanusClient(
-                socketPath: testSocketPath,
-                channelId: "nonExistentChannel"
+                socketPath: "", // Empty socket path should be rejected
+                channelId: "validChannel"
             )
-            XCTFail("Expected connection or channel error")
+            XCTFail("Expected error for empty socket path")
         } catch let error as JSONRPCError {
-            // Should throw connection error or invalid channel
-            XCTAssertTrue(error is JSONRPCError)
+            XCTAssertEqual(error.code, JSONRPCErrorCode.invalidParams.rawValue,
+                "Expected InvalidParams for empty socket path")
         } catch {
             XCTFail("Expected JSONRPCError, got \(error)")
         }

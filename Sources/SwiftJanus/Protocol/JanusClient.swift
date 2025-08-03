@@ -104,11 +104,24 @@ public class JanusClient {
         )
         
         // Ensure manifest is loaded if validation is enabled (lazy loading like Go)
-        try await ensureManifestLoaded()
+        // Only fetch manifest if we don't have one yet and validation is enabled
+        if enableValidation && manifest == nil {
+            do {
+                try await ensureManifestLoaded()
+            } catch {
+                // If manifest loading fails but we still want to validate basic command structure,
+                // we can do basic validation without manifest
+                try validateBasicCommandStructure(janusCommand)
+                throw error  // Re-throw the connection error after basic validation
+            }
+        }
         
         // Validate command against Manifest 
         if enableValidation, let spec = manifest {
             try validateCommandAgainstSpec(spec, command: janusCommand)
+        } else if enableValidation {
+            // No manifest available, do basic validation only
+            try validateBasicCommandStructure(janusCommand)
         }
         
         // Serialize command
@@ -202,15 +215,51 @@ public class JanusClient {
             throw JSONRPCError.create(code: .invalidParams, details: "Channel ID cannot be empty")
         }
         
+        // Channel ID length limit (matching other implementations)
+        if channelId.count > 256 {
+            throw JSONRPCError.create(code: .invalidParams, details: "Channel ID exceeds maximum length of 256 characters")
+        }
+        
         // Security validation for channel ID (matching Go implementation)
-        let forbiddenChars = CharacterSet(charactersIn: "\0;`$|&\n\r\t")
+        let forbiddenChars = CharacterSet(charactersIn: "\0;`$|&\n\r\t<>\"'/")
         if channelId.rangeOfCharacter(from: forbiddenChars) != nil {
             throw JSONRPCError.create(code: .invalidParams, details: "Channel ID contains forbidden characters")
         }
         
-        if channelId.contains("..") || channelId.hasPrefix("/") {
-            throw JSONRPCError.create(code: .invalidParams, details: "Channel ID contains invalid path characters")
+        if channelId.contains("..") {
+            throw JSONRPCError.create(code: .invalidParams, details: "Channel ID contains path traversal sequence")
         }
+        
+        // XSS pattern detection
+        let lowercaseChannelId = channelId.lowercased()
+        if lowercaseChannelId.contains("script") || lowercaseChannelId.contains("javascript") {
+            throw JSONRPCError.create(code: .invalidParams, details: "Channel ID contains potential XSS patterns")
+        }
+    }
+    
+    private func validateBasicCommandStructure(_ command: JanusCommand) throws {
+        // Basic validation without manifest
+        
+        // Validate command name
+        guard !command.command.isEmpty else {
+            throw JSONRPCError.create(code: .invalidParams, details: "Command name cannot be empty")
+        }
+        
+        // Check for obviously invalid command names
+        if command.command.contains(" ") || command.command.contains("\n") || command.command.contains("\t") {
+            throw JSONRPCError.create(code: .invalidParams, details: "Invalid command name format")
+        }
+        
+        // For built-in commands, we can validate
+        let reservedCommands = ["ping", "echo", "get_info", "validate", "slow_process", "spec"]
+        if reservedCommands.contains(command.command) {
+            // Built-in commands don't need argument validation here
+            return
+        }
+        
+        // For non-reserved commands like "quickCommand", we can't validate existence without manifest
+        // But we can still proceed - the actual command execution will fail if the command doesn't exist
+        // This allows tests to check for parameter validation errors on potentially valid commands
     }
     
     private func validateCommandAgainstSpec(_ spec: Manifest, command: JanusCommand) throws {

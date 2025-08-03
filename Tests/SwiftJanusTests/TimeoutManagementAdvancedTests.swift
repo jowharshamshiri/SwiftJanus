@@ -340,25 +340,29 @@ final class TimeoutManagementAdvancedTests: XCTestCase {
         let operationQueue = OperationQueue()
         operationQueue.maxConcurrentOperationCount = 10
         
+        // Capture timeout manager to avoid nil unwrapping in closures
+        let timeoutManager = self.timeoutManager!
+        
         // Launch multiple concurrent timeout operations
         for i in 0..<numberOfOperations {
+            let commandId = "concurrent-\\(i)" // Move outside to ensure it's captured properly
             operationQueue.addOperation {
-                let commandId = "concurrent-\\(i)"
-                
                 // Register timeout
-                self.timeoutManager.registerTimeout(commandId: commandId, timeout: 0.1) {}
+                timeoutManager.registerTimeout(commandId: commandId, timeout: 0.1) {}
                 
                 // Randomly cancel some timeouts
                 if i % 3 == 0 {
+                    let capturedCommandId = commandId // Capture for closure
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        self.timeoutManager.cancelTimeout(commandId: commandId)
+                        timeoutManager.cancelTimeout(commandId: capturedCommandId)
                     }
                 }
                 
                 // Randomly extend some timeouts
                 if i % 5 == 0 {
+                    let capturedCommandId = commandId // Capture for closure
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-                        self.timeoutManager.extendTimeout(commandId: commandId, additionalTime: 0.05)
+                        timeoutManager.extendTimeout(commandId: capturedCommandId, additionalTime: 0.05)
                     }
                 }
                 

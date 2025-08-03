@@ -210,18 +210,19 @@ public class ResponseTracker {
     
     /// Shutdown response tracker
     public func shutdown() {
-        queue.sync(flags: .barrier) {
-            guard !isShutdown else { return }
-            isShutdown = true
+        // Use async to avoid deadlock during deallocation
+        queue.async(flags: .barrier) { [weak self] in
+            guard let self = self, !self.isShutdown else { return }
+            self.isShutdown = true
             
-            dispatchTimer?.cancel()
-            dispatchTimer = nil
+            self.dispatchTimer?.cancel()
+            self.dispatchTimer = nil
             
             // Cancel all pending commands
-            _ = cancelAllCommandsUnsafe()
+            _ = self.cancelAllCommandsUnsafe()
             
             // Emit shutdown event
-            emit("shutdown", data: ["timestamp": Date().timeIntervalSince1970])
+            self.emit("shutdown", data: ["timestamp": Date().timeIntervalSince1970])
         }
     }
     
