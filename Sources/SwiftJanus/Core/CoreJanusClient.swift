@@ -7,6 +7,28 @@ public class CoreJanusClient {
     private let maxMessageSize: Int
     private let datagramTimeout: TimeInterval
     
+    // Maximum Unix socket path length (108 on most systems, but leave room for null terminator)
+    private static let maxSocketPathLength = 107
+    
+    /// Helper method to safely set up Unix socket address
+    private func setupSocketAddress(_ path: String) throws -> sockaddr_un {
+        guard path.count <= Self.maxSocketPathLength else {
+            throw JSONRPCError.create(code: .socketError, details: "Socket path too long: \(path.count) characters (max: \(Self.maxSocketPathLength))")
+        }
+        
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        let pathCString = path.cString(using: .utf8)!
+        _ = withUnsafeMutablePointer(to: &addr.sun_path) { ptr in
+            ptr.withMemoryRebound(to: CChar.self, capacity: pathCString.count) { pathPtr in
+                pathCString.withUnsafeBufferPointer { buffer in
+                    pathPtr.initialize(from: buffer.baseAddress!, count: buffer.count - 1) // Exclude null terminator
+                }
+            }
+        }
+        return addr
+    }
+    
     public init(socketPath: String, maxMessageSize: Int = 65536, datagramTimeout: TimeInterval = 5.0) {
         self.socketPath = socketPath
         self.maxMessageSize = maxMessageSize
@@ -29,16 +51,7 @@ public class CoreJanusClient {
         defer { close(responseSocketFD) }
         
         // Bind response socket
-        var responseAddr = sockaddr_un()
-        responseAddr.sun_family = sa_family_t(AF_UNIX)
-        let responsePathCString = responseSocketPath.cString(using: .utf8)!
-        _ = withUnsafeMutablePointer(to: &responseAddr.sun_path) { ptr in
-            ptr.withMemoryRebound(to: CChar.self, capacity: responsePathCString.count) { pathPtr in
-                responsePathCString.withUnsafeBufferPointer { buffer in
-                    pathPtr.initialize(from: buffer.baseAddress!, count: min(buffer.count, 104))
-                }
-            }
-        }
+        var responseAddr = try setupSocketAddress(responseSocketPath)
         
         let responseAddrSize = MemoryLayout<sockaddr_un>.size
         let bindResult = withUnsafePointer(to: &responseAddr) { ptr in
@@ -65,16 +78,7 @@ public class CoreJanusClient {
         defer { close(clientSocketFD) }
         
         // Send datagram to server
-        var serverAddr = sockaddr_un()
-        serverAddr.sun_family = sa_family_t(AF_UNIX)
-        let serverPathCString = socketPath.cString(using: .utf8)!
-        _ = withUnsafeMutablePointer(to: &serverAddr.sun_path) { ptr in
-            ptr.withMemoryRebound(to: CChar.self, capacity: serverPathCString.count) { pathPtr in
-                serverPathCString.withUnsafeBufferPointer { buffer in
-                    pathPtr.initialize(from: buffer.baseAddress!, count: min(buffer.count, 104))
-                }
-            }
-        }
+        var serverAddr = try setupSocketAddress(socketPath)
         
         let serverAddrSize = MemoryLayout<sockaddr_un>.size
         let sendResult = data.withUnsafeBytes { dataPtr in
@@ -116,16 +120,7 @@ public class CoreJanusClient {
         defer { close(clientSocketFD) }
         
         // Send datagram to server
-        var serverAddr = sockaddr_un()
-        serverAddr.sun_family = sa_family_t(AF_UNIX)
-        let serverPathCString = socketPath.cString(using: .utf8)!
-        _ = withUnsafeMutablePointer(to: &serverAddr.sun_path) { ptr in
-            ptr.withMemoryRebound(to: CChar.self, capacity: serverPathCString.count) { pathPtr in
-                serverPathCString.withUnsafeBufferPointer { buffer in
-                    pathPtr.initialize(from: buffer.baseAddress!, count: min(buffer.count, 104))
-                }
-            }
-        }
+        var serverAddr = try setupSocketAddress(socketPath)
         
         let serverAddrSize = MemoryLayout<sockaddr_un>.size
         let sendResult = data.withUnsafeBytes { dataPtr in
@@ -159,16 +154,7 @@ public class CoreJanusClient {
         defer { close(clientSocketFD) }
         
         // Try to send test datagram
-        var serverAddr = sockaddr_un()
-        serverAddr.sun_family = sa_family_t(AF_UNIX)
-        let serverPathCString = socketPath.cString(using: .utf8)!
-        _ = withUnsafeMutablePointer(to: &serverAddr.sun_path) { ptr in
-            ptr.withMemoryRebound(to: CChar.self, capacity: serverPathCString.count) { pathPtr in
-                serverPathCString.withUnsafeBufferPointer { buffer in
-                    pathPtr.initialize(from: buffer.baseAddress!, count: min(buffer.count, 104))
-                }
-            }
-        }
+        var serverAddr = try setupSocketAddress(socketPath)
         
         let serverAddrSize = MemoryLayout<sockaddr_un>.size
         let sendResult = testData.withUnsafeBytes { dataPtr in
@@ -219,7 +205,7 @@ public class CoreJanusClient {
             
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                throw JSONRPCError.create(code: .handlerTimeout, details: "Operation timed out after \\(timeout) seconds")
+                throw JSONRPCError.create(code: .handlerTimeout, details: "Operation timed out after \(timeout) seconds")
             }
             
             guard let result = try await group.next() else {
