@@ -225,10 +225,18 @@ public class JanusServer {
         }
         print("Socket file verified: \(socketPath)")
         
+        // Set socket to non-blocking mode for proper shutdown handling
+        let flags = fcntl(socketFD, F_GETFL, 0)
+        fcntl(socketFD, F_SETFL, flags | O_NONBLOCK)
+        
         defer {
+            print("DEBUG: Server defer block executing - closing socket and cleaning up")
             Darwin.close(socketFD)
             if config.cleanupOnShutdown {
+                print("DEBUG: Removing socket file: \(socketPath)")
                 try? FileManager.default.removeItem(atPath: socketPath)
+                let exists = FileManager.default.fileExists(atPath: socketPath)
+                print("DEBUG: Socket file exists after cleanup: \(exists)")
             }
         }
         
@@ -243,17 +251,38 @@ public class JanusServer {
                 Darwin.recv(socketFD, bufferPtr.baseAddress, bufferSize, 0)
             }
             
+            // Check if we should stop after each recv (important for proper shutdown)
+            if !isRunning {
+                print("DEBUG: Server loop exiting due to stop request")
+                break
+            }
+            
             guard bytesReceived > 0 else {
+                // On error or no data, check again quickly
+                if bytesReceived == -1 {
+                    let error = errno
+                    if error == EAGAIN || error == EWOULDBLOCK {
+                        // No data available, continue
+                        try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+                        continue
+                    } else {
+                        print("DEBUG: recv error: \(error), exiting loop")
+                        break
+                    }
+                }
                 continue
             }
             
             let receivedData = buffer.prefix(bytesReceived)
             await processReceivedDatagram(receivedData)
         }
+        
+        print("DEBUG: Server loop completed, isRunning: \(isRunning)")
     }
     
     /// Stop the server
     public func stop() {
+        print("DEBUG: Server.stop() called, setting isRunning = false")
         isRunning = false
     }
     
@@ -278,7 +307,10 @@ public class JanusServer {
             
             // Send response via reply_to if specified
             if let replyTo = cmd.replyTo {
+                print("DEBUG: Processing command '\(cmd.command)' with replyTo: \(replyTo)")
                 await sendResponse(cmd.id, cmd.channelId, cmd.command, cmd.args, replyTo)
+            } else {
+                print("DEBUG: No replyTo specified for command '\(cmd.command)'")
             }
         } catch {
             print("Failed to parse datagram: \(error)")
@@ -287,13 +319,17 @@ public class JanusServer {
     }
     
     private func sendResponse(_ commandId: String, _ channelId: String, _ command: String, _ args: [String: AnyCodable]?, _ replyTo: String) async {
+        print("DEBUG: sendResponse called for command '\(command)' ID '\(commandId)'")
         var success = true
         var result: [String: AnyCodable] = [:]
         
         // Execute command with timeout management
         let commandTask = Task {
             // Check if we have a custom handler
+            print("DEBUG: Looking for handler for command '\(command)'")
+            print("DEBUG: Available handlers: \(Array(self.handlers.keys))")
             if let handler = handlers[command] {
+                print("DEBUG: Found custom handler for '\(command)'")
                 let janusCommand = JanusCommand(
                     id: commandId,
                     channelId: channelId,
@@ -304,15 +340,20 @@ public class JanusServer {
                     timestamp: Date().timeIntervalSince1970
                 )
                 
+                print("DEBUG: Executing custom handler for '\(command)'")
                 let handlerResult = handler(janusCommand)
+                print("DEBUG: Handler result received")
                 switch handlerResult {
                 case .success(let data):
+                    print("DEBUG: Handler succeeded with data: \(data)")
                     return (true, data)
                 case .failure(let error):
+                    print("DEBUG: Handler failed with error: \(error)")
                     return (false, ["error": AnyCodable(error.localizedDescription)])
                 }
             } else {
                 // Use default handlers (extracted from main binary)
+                print("DEBUG: Using default handler for '\(command)'")
                 switch command {
                 case "server_stats":
                     let stats = self.getServerStats()
@@ -405,22 +446,38 @@ public class JanusServer {
         
         // Execute with timeout
         do {
+            print("DEBUG: Starting command execution with timeout")
             let timeoutTask = Task {
                 try await Task.sleep(nanoseconds: UInt64(config.defaultTimeout * 1_000_000_000))
+                print("DEBUG: Command timeout triggered after \(config.defaultTimeout) seconds")
                 return (false, ["error": AnyCodable("Command timeout after \(config.defaultTimeout) seconds")])
             }
             
+            print("DEBUG: Setting up TaskGroup")
             let (commandSuccess, commandResult) = await withTaskGroup(of: (Bool, [String: AnyCodable]).self, returning: (Bool, [String: AnyCodable]).self) { group in
-                group.addTask { try! await commandTask.value }
-                group.addTask { try! await timeoutTask.value }
+                group.addTask { 
+                    print("DEBUG: Command task starting")
+                    let result = try! await commandTask.value
+                    print("DEBUG: Command task completed with result: \(result)")
+                    return result
+                }
+                group.addTask { 
+                    print("DEBUG: Timeout task starting")
+                    let result = try! await timeoutTask.value
+                    print("DEBUG: Timeout task completed")
+                    return result
+                }
                 
+                print("DEBUG: Waiting for first task to complete")
                 let result = await group.next()!
+                print("DEBUG: First task completed with result: \(result)")
                 group.cancelAll()
                 return result
             }
             
             success = commandSuccess
             result = commandResult
+            print("DEBUG: Command execution completed - success: \(success), result: \(result)")
         }
         
         // Validate response against Manifest if available
@@ -485,8 +542,12 @@ public class JanusServer {
                     print("ERROR: Response message too long for SOCK_DGRAM buffer limits")
                     print("Consider reducing response size or splitting data")
                 } else {
-                    print("ERROR: Failed to send response: errno \(error)")
+                    print("ERROR: Failed to send response to \(replyTo): errno \(error)")
+                    print("DEBUG: Error description: \(String(cString: strerror(error)))")
+                    print("DEBUG: ReplyTo socket path exists: \(FileManager.default.fileExists(atPath: replyTo))")
                 }
+            } else {
+                print("✅ Response sent successfully to \(replyTo)")
             }
             
         } catch {

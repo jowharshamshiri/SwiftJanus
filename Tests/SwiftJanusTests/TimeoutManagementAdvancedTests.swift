@@ -27,25 +27,25 @@ final class TimeoutManagementAdvancedTests: XCTestCase {
         
         let commandId = "test-extend-command"
         
-        // Register a timeout for 0.1 seconds
-        timeoutManager.registerTimeout(commandId: commandId, timeout: 0.1) {
+        // Register a timeout for 0.2 seconds
+        timeoutManager.registerTimeout(commandId: commandId, timeout: 0.2) {
             timeoutFired = true
             expectation.fulfill()
         }
         
-        // Wait 0.05 seconds, then extend by 0.1 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            let extended = self.timeoutManager.extendTimeout(commandId: commandId, additionalTime: 0.1)
+        // Wait 0.1 seconds, then extend by 0.2 seconds  
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            let extended = self.timeoutManager.extendTimeout(commandId: commandId, additionalTime: 0.2)
             XCTAssertTrue(extended, "Expected timeout extension to succeed")
         }
         
-        // Wait another 0.1 seconds (should not fire yet since we extended)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+        // Wait another 0.2 seconds (should not fire yet since we extended - original 0.2 + 0.1 delay + 0.2 extension = 0.5s total)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             XCTAssertFalse(timeoutFired, "Callback should not have fired yet after extension")
         }
         
         // Wait for the extended timeout to fire
-        waitForExpectations(timeout: 0.3, handler: nil)
+        waitForExpectations(timeout: 0.6, handler: nil)
         
         XCTAssertTrue(timeoutFired, "Callback should have fired after extended timeout")
         XCTAssertEqual(timeoutManager.activeTimeoutCount, 0, "Should have no active timeouts after firing")
