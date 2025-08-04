@@ -64,14 +64,12 @@ public class CoreJanusClient {
             throw JSONRPCError.create(code: .socketError, details: "Failed to bind response socket")
         }
         
-        // Clean up response socket file on completion
-        defer {
-            unlink(responseSocketPath)
-        }
-        
         // Create client socket for sending
         let clientSocketFD = socket(AF_UNIX, SOCK_DGRAM, 0)
         guard clientSocketFD != -1 else {
+            // Clean up response socket on error
+            close(responseSocketFD)
+            unlink(responseSocketPath)
             throw JSONRPCError.create(code: .socketError, details: "Failed to create client socket")
         }
         
@@ -91,6 +89,9 @@ public class CoreJanusClient {
         
         guard sendResult != -1 else {
             let errorCode = errno
+            // Clean up response socket on error
+            close(responseSocketFD)
+            unlink(responseSocketPath)
             if errorCode == ENOENT || errorCode == ECONNREFUSED {
                 throw JSONRPCError.create(code: .serverError, details: "No such file or directory (target socket does not exist)")
             } else {
@@ -99,8 +100,24 @@ public class CoreJanusClient {
         }
         
         // Receive response with timeout
-        return try await withTimeout(datagramTimeout) {
-            return try await self.receiveResponse(responseSocketFD)
+        do {
+            let result = try await withTimeout(datagramTimeout) {
+                return try await self.receiveResponse(responseSocketFD)
+            }
+            // Clean up response socket after successful response
+            close(responseSocketFD)
+            unlink(responseSocketPath)
+            return result
+        } catch {
+            // Give server a brief moment to respond before cleanup on timeout
+            // This helps prevent the race condition where server responds just after client timeout
+            if let jsonError = error as? JSONRPCError, jsonError.code == JSONRPCErrorCode.handlerTimeout.rawValue {
+                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms grace period
+            }
+            // Clean up response socket on timeout or error
+            close(responseSocketFD)
+            unlink(responseSocketPath)
+            throw error
         }
     }
     

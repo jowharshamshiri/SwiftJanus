@@ -271,7 +271,8 @@ public final class TimeoutManager {
         lock.unlock()
         
         // Default timeout handling - could be extended
-        print("Timeout occurred for command: \(commandId)")
+        // Timeout logging should be handled by the caller or logging system
+        // print("Timeout occurred for command: \(commandId)")
     }
 }
 

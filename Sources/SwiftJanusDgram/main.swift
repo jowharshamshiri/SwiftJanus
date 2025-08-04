@@ -35,15 +35,25 @@ struct JanusDgram: AsyncParsableCommand {
     // Manifest storage
     private var manifest: Manifest?
     
+    /// Debug logging helper - only prints when debug flag is enabled
+    private func debugLog(_ message: String) {
+        if debug {
+            print("DEBUG: \(message)")
+        }
+    }
+    
     @Option(name: .long, help: "Channel ID for command routing")
     var channel: String = "test"
     
+    @Flag(name: .long, help: "Enable debug logging")
+    var debug: Bool = false
+    
     mutating func run() async throws {
-        print("DEBUG: Starting run() function")
+        debugLog("Starting run() function")
         
         // Load Manifest if provided
         if let specPath = spec {
-            print("DEBUG: Loading spec from \(specPath)")
+            debugLog("Loading spec from \(specPath)")
             do {
                 let specURL = URL(fileURLWithPath: specPath)
                 let specData = try Data(contentsOf: specURL)
@@ -55,14 +65,14 @@ struct JanusDgram: AsyncParsableCommand {
                 throw ExitCode.failure
             }
         } else {
-            print("DEBUG: No spec provided")
+            debugLog("No spec provided")
         }
         
         if listen {
-            print("DEBUG: Starting listener")
+            debugLog("Starting listener")
             try listenForDatagrams()
         } else if let target = sendTo {
-            print("DEBUG: Sending to target: \(target)")
+            debugLog("Sending to target: \(target)")
             try await sendDatagram(to: target)
         } else {
             print("Usage: either --listen or --send-to required")
@@ -151,14 +161,14 @@ struct JanusDgram: AsyncParsableCommand {
         print("Sending SOCK_DGRAM to: \(target)")
         
         do {
-            print("Creating JanusClient...")
+            debugLog("Creating JanusClient...")
             let client = try await JanusClient(socketPath: target, channelId: "swift-client")
-            print("JanusClient created successfully")
+            debugLog("JanusClient created successfully")
             
             let args: [String: AnyCodable] = ["message": AnyCodable(message)]
             
             // Send command using high-level API
-            print("Sending command: \(command)")
+            debugLog("Sending command: \(command)")
             let response = try await client.sendCommand(command, args: args, timeout: 5.0)
             print("Response: Success=\(response.success), Result=\(response.result ?? [:])")
             
