@@ -164,7 +164,7 @@ class ServerFeaturesTests: XCTestCase {
         
         // Register test handler
         server.registerHandler("test_command") { command in
-            return .success(["message": AnyCodable("test response")])
+            return .success(AnyCodable("test response"))
         }
         
         // Start server
@@ -341,7 +341,7 @@ class ServerFeaturesTests: XCTestCase {
             commandQueue.async {
                 processedCommands.append(command.id)
             }
-            return .success(["tracked": AnyCodable(true)])
+            return .success(AnyCodable(true))
         }
         
         // Start server
@@ -429,11 +429,11 @@ class ServerFeaturesTests: XCTestCase {
         
         try await Task.sleep(nanoseconds: 100_000_000) // 100ms
         
-        // Send multiple commands from same "client" (same channel)
+        // Send multiple SOCK_DGRAM commands (each creates ephemeral socket = different client)
         for i in 0..<3 {
             let command = JanusCommand(
                 id: "activity-test-\(i)",
-                channelId: "test-client", // Same channel = same client
+                channelId: "test-client", // Logical channel (for application routing)
                 command: "ping",
                 replyTo: nil,
                 args: nil,
@@ -462,7 +462,7 @@ class ServerFeaturesTests: XCTestCase {
             Task {
                 try await Task.sleep(nanoseconds: 10_000_000_000) // 10 seconds
             }
-            return .success(["should": AnyCodable("not reach here")])
+            return .success(AnyCodable("should not reach here"))
         }
         
         // Start server

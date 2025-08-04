@@ -43,11 +43,12 @@ public struct JanusCommand: Codable, Sendable {
 }
 
 /// Response message sent over socket
+/// Updated to support direct value responses for protocol compliance
 public struct JanusResponse: Codable, Sendable {
     public let commandId: String
     public let channelId: String
     public let success: Bool
-    public let result: [String: AnyCodable]?
+    public let result: AnyCodable?
     public let error: JSONRPCError?
     public let timestamp: Double
     
@@ -55,7 +56,7 @@ public struct JanusResponse: Codable, Sendable {
         commandId: String,
         channelId: String,
         success: Bool,
-        result: [String: AnyCodable]? = nil,
+        result: AnyCodable? = nil,
         error: JSONRPCError? = nil,
         timestamp: Double = Date().timeIntervalSince1970
     ) {

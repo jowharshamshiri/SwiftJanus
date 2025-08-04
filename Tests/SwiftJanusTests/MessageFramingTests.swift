@@ -46,7 +46,7 @@ final class MessageFramingTests: XCTestCase {
             commandId: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             success: true,
-            result: ["pong": AnyCodable(true)],
+            result: AnyCodable(["pong": AnyCodable(true)]),
             error: nil,
             timestamp: 1722248201
         )
@@ -116,7 +116,7 @@ final class MessageFramingTests: XCTestCase {
             commandId: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             success: true,
-            result: ["pong": AnyCodable(true)],
+            result: AnyCodable(["pong": AnyCodable(true)]),
             error: nil,
             timestamp: 1722248201
         )
@@ -150,7 +150,7 @@ final class MessageFramingTests: XCTestCase {
             commandId: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             success: true,
-            result: ["pong": AnyCodable(true)],
+            result: AnyCodable(["pong": AnyCodable(true)]),
             error: nil,
             timestamp: 1722248201
         )
@@ -244,7 +244,7 @@ final class MessageFramingTests: XCTestCase {
             commandId: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             success: true,
-            result: ["pong": AnyCodable(true)],
+            result: AnyCodable(["pong": AnyCodable(true)]),
             error: nil,
             timestamp: 1722248201
         )
@@ -282,7 +282,7 @@ final class MessageFramingTests: XCTestCase {
             commandId: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             success: true,
-            result: ["pong": AnyCodable(true)],
+            result: AnyCodable(["pong": AnyCodable(true)]),
             error: nil,
             timestamp: 1722248201
         )
@@ -425,7 +425,7 @@ final class MessageFramingTests: XCTestCase {
             commandId: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             success: true,
-            result: ["pong": AnyCodable(true)],
+            result: AnyCodable(["pong": AnyCodable(true)]),
             error: nil,
             timestamp: 1722248201
         )

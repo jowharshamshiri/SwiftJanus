@@ -170,7 +170,7 @@ struct JanusDgram: AsyncParsableCommand {
             // Send command using high-level API
             debugLog("Sending command: \(command)")
             let response = try await client.sendCommand(command, args: args, timeout: 5.0)
-            print("Response: Success=\(response.success), Result=\(response.result ?? [:])")
+            print("Response: Success=\(response.success), Result=\(response.result?.value ?? [:])")
             
         } catch let error as JSONRPCError {
             print("JSONRPCError: \(error.errorDescription)", to: &Self.standardError)
@@ -289,7 +289,7 @@ struct JanusDgram: AsyncParsableCommand {
             commandId: commandId,
             channelId: channelId,
             success: success,
-            result: result.isEmpty ? nil : result,
+            result: result.isEmpty ? nil : AnyCodable(result),
             error: errorObj ?? (success ? nil : JSONRPCError.create(code: .methodNotFound, details: "Unknown command")),
             timestamp: Date().timeIntervalSince1970
         )

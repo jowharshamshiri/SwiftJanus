@@ -1,7 +1,8 @@
 import Foundation
 
 /// Command handler function type for SOCK_DGRAM server
-public typealias JanusCommandHandler = (JanusCommand) -> Result<[String: AnyCodable], JSONRPCError>
+/// Updated to support direct value responses (not just dictionaries) for protocol compliance
+public typealias JanusCommandHandler = (JanusCommand) -> Result<AnyCodable, JSONRPCError>
 
 /// Event handler function type for server events
 public typealias ServerEventHandler = (Any) -> Void
@@ -92,6 +93,8 @@ public class ServerEventEmitter {
 }
 
 /// Server state for tracking clients and activity
+/// Note: For SOCK_DGRAM, each command creates an ephemeral client socket, 
+/// so "clients" represent individual command socket addresses, not persistent connections
 public struct ServerState {
     var clients: [String: ClientConnection] = [:]
     var totalConnections: Int = 0
@@ -110,7 +113,7 @@ public struct ServerState {
         totalCommands += 1
     }
     
-    mutating func removeInactiveClients(timeout: TimeInterval = 300) { // 5 minutes default
+    mutating func removeInactiveClients(timeout: TimeInterval = 60) { // 1 minute default for SOCK_DGRAM ephemeral sockets
         let cutoff = Date().addingTimeInterval(-timeout)
         clients = clients.filter { $0.value.lastSeen > cutoff }
     }
@@ -249,8 +252,17 @@ public class JanusServer {
         while isRunning {
             var buffer = Data(count: 64 * 1024)
             let bufferSize = buffer.count
+            var senderAddr = sockaddr_un()
+            var senderAddrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
+            
             let bytesReceived = buffer.withUnsafeMutableBytes { bufferPtr in
-                Darwin.recv(socketFD, bufferPtr.baseAddress, bufferSize, 0)
+                withUnsafeMutablePointer(to: &senderAddr) { addrPtr in
+                    addrPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
+                        withUnsafeMutablePointer(to: &senderAddrLen) { lenPtr in
+                            Darwin.recvfrom(socketFD, bufferPtr.baseAddress, bufferSize, 0, sockaddrPtr, lenPtr)
+                        }
+                    }
+                }
             }
             
             // Check if we should stop after each recv (important for proper shutdown)
@@ -275,8 +287,13 @@ public class JanusServer {
                 continue
             }
             
+            // Extract sender socket path for client tracking
+            let senderSocketPath = withUnsafePointer(to: &senderAddr.sun_path) { pathPtr in
+                String(cString: UnsafeRawPointer(pathPtr).assumingMemoryBound(to: CChar.self))
+            }
+            
             let receivedData = buffer.prefix(bytesReceived)
-            await processReceivedDatagram(receivedData)
+            await processReceivedDatagram(receivedData, senderAddress: senderSocketPath)
         }
         
         debugLog("Server loop completed, isRunning: \(isRunning)")
@@ -297,18 +314,18 @@ public class JanusServer {
         }
     }
     
-    private func processReceivedDatagram(_ data: Data) async {
+    private func processReceivedDatagram(_ data: Data, senderAddress: String) async {
         do {
             let cmd = try JSONDecoder().decode(JanusCommand.self, from: data)
-            debugLog("Received datagram: \(cmd.command) (ID: \(cmd.id))")
+            debugLog("Received datagram: \(cmd.command) (ID: \(cmd.id)) from socket: \(senderAddress)")
             
-            // Track client activity (using channelId as client identifier for SOCK_DGRAM)
+            // Track client activity (using sender socket address as client identifier for SOCK_DGRAM)
             stateQueue.async(flags: .barrier) {
-                if self.serverState.clients[cmd.channelId] == nil {
-                    let client = self.serverState.addClient(address: cmd.channelId)
+                if self.serverState.clients[senderAddress] == nil {
+                    let client = self.serverState.addClient(address: senderAddress)
                     self.eventEmitter.emit("connection", data: client)
                 }
-                self.serverState.updateClientActivity(address: cmd.channelId)
+                self.serverState.updateClientActivity(address: senderAddress)
             }
             
             // Emit command event
@@ -330,7 +347,8 @@ public class JanusServer {
     private func sendResponse(_ commandId: String, _ channelId: String, _ command: String, _ args: [String: AnyCodable]?, _ replyTo: String) async {
         debugLog("sendResponse called for command '\(command)' ID '\(commandId)'")
         var success = true
-        var result: [String: AnyCodable] = [:]
+        var result: AnyCodable? = nil
+        var responseError: JSONRPCError? = nil
         
         // Execute command with timeout management
         let commandTask = Task {
@@ -355,10 +373,10 @@ public class JanusServer {
                 switch handlerResult {
                 case .success(let data):
                     debugLog("Handler succeeded with data: \(data)")
-                    return (true, data)
+                    return (true, data, nil as JSONRPCError?)
                 case .failure(let error):
                     debugLog("Handler failed with error: \(error)")
-                    return (false, ["error": AnyCodable(error.localizedDescription)])
+                    return (false, AnyCodable(""), error)
                 }
             } else {
                 // Use default handlers (extracted from main binary)
@@ -390,13 +408,13 @@ public class JanusServer {
                             statsResult[key] = AnyCodable(nestedDict)
                         }
                     }
-                    return (true, statsResult)
+                    return (true, AnyCodable(statsResult), nil as JSONRPCError?)
                 case "ping":
                     let pingResult: [String: AnyCodable] = [
                         "pong": AnyCodable(true),
                         "timestamp": AnyCodable(Date().timeIntervalSince1970)
                     ]
-                    return (true, pingResult)
+                    return (true, AnyCodable(pingResult), nil as JSONRPCError?)
                 case "echo":
                     let echoResult: [String: AnyCodable]
                     if let message = args?["message"] {
@@ -404,14 +422,14 @@ public class JanusServer {
                     } else {
                         echoResult = ["echo": AnyCodable("Hello from Swift SOCK_DGRAM server!")]
                     }
-                    return (true, echoResult)
+                    return (true, AnyCodable(echoResult), nil as JSONRPCError?)
                 case "get_info":
                     let infoResult: [String: AnyCodable] = [
                         "server": AnyCodable("Swift Janus"),
                         "version": AnyCodable("1.0.0"),
                         "timestamp": AnyCodable(Date().timeIntervalSince1970)
                     ]
-                    return (true, infoResult)
+                    return (true, AnyCodable(infoResult), nil as JSONRPCError?)
                 case "validate":
                     // Test JSON validation
                     if let message = args?["message"]?.value as? String {
@@ -421,20 +439,20 @@ public class JanusServer {
                                 "valid": AnyCodable(true),
                                 "message": AnyCodable("Valid JSON")
                             ]
-                            return (true, validateResult)
+                            return (true, AnyCodable(validateResult), nil as JSONRPCError?)
                         } catch {
                             let validateResult: [String: AnyCodable] = [
                                 "valid": AnyCodable(false),
                                 "error": AnyCodable("Invalid JSON: \(error)")
                             ]
-                            return (true, validateResult)
+                            return (true, AnyCodable(validateResult), nil as JSONRPCError?)
                         }
                     } else {
                         let validateResult: [String: AnyCodable] = [
                             "valid": AnyCodable(false),
                             "error": AnyCodable("No message provided for validation")
                         ]
-                        return (true, validateResult)
+                        return (true, AnyCodable(validateResult), nil as JSONRPCError?)
                     }
                 case "slow_process":
                     // Simulate a slow process that might timeout
@@ -446,9 +464,10 @@ public class JanusServer {
                     if let message = args?["message"] {
                         slowResult["message"] = message
                     }
-                    return (true, slowResult)
+                    return (true, AnyCodable(slowResult), nil as JSONRPCError?)
                 default:
-                    return (false, ["error": AnyCodable("Unknown command: \(command)")])
+                    let error = JSONRPCError.create(code: .methodNotFound, details: "Unknown command: \(command)")
+                    return (false, AnyCodable(""), error)
                 }
             }
         }
@@ -459,11 +478,12 @@ public class JanusServer {
             let timeoutTask = Task {
                 try await Task.sleep(nanoseconds: UInt64(config.defaultTimeout * 1_000_000_000))
                 debugLog("Command timeout triggered after \(config.defaultTimeout) seconds")
-                return (false, ["error": AnyCodable("Command timeout after \(config.defaultTimeout) seconds")])
+                let timeoutError = JSONRPCError.create(code: .internalError, details: "Command timeout after \(config.defaultTimeout) seconds")
+                return (false, AnyCodable(""), timeoutError)
             }
             
             debugLog("Setting up TaskGroup")
-            let (commandSuccess, commandResult) = await withTaskGroup(of: (Bool, [String: AnyCodable]).self, returning: (Bool, [String: AnyCodable]).self) { group in
+            let (commandSuccess, commandResult, taskError) = await withTaskGroup(of: (Bool, AnyCodable, JSONRPCError?).self, returning: (Bool, AnyCodable, JSONRPCError?).self) { group in
                 group.addTask { [self] in
                     debugLog("Command task starting")
                     let result = try! await commandTask.value
@@ -485,23 +505,25 @@ public class JanusServer {
             }
             
             success = commandSuccess
-            result = commandResult
-            debugLog("Command execution completed - success: \(success), result: \(result)")
+            result = success ? commandResult : nil
+            responseError = taskError
+            debugLog("Command execution completed - success: \(success), result: \(String(describing: result))")
         }
         
         // Validate response against Manifest if available
-        if let manifest = self.manifest, !result.isEmpty {
+        if let manifest = self.manifest, let result = result {
             let validator = ResponseValidator(specification: manifest)
             // Convert AnyCodable result to [String: Any] for validation
-            let resultDict = result.mapValues { $0.value }
-            let validationResult = validator.validateCommandResponse(
-                resultDict,
-                channelId: channelId,
-                commandName: command
-            )
-            if !validationResult.valid {
-                // Log validation errors but don't fail the response
-                debugLog("Response validation failed for \(command): \(validationResult.errors.map { $0.localizedDescription }.joined(separator: ", "))")
+            if let resultDict = result.value as? [String: Any] {
+                let validationResult = validator.validateCommandResponse(
+                    resultDict,
+                    channelId: channelId,
+                    commandName: command
+                )
+                if !validationResult.valid {
+                    // Log validation errors but don't fail the response
+                    debugLog("Response validation failed for \(command): \(validationResult.errors.map { $0.localizedDescription }.joined(separator: ", "))")
+                }
             }
         }
         
@@ -509,8 +531,8 @@ public class JanusServer {
             commandId: commandId,
             channelId: channelId,
             success: success,
-            result: result.isEmpty ? nil : result,
-            error: success ? nil : JSONRPCError.create(code: .internalError, details: result["error"]?.value as? String ?? "Unknown error"),
+            result: result,
+            error: success ? nil : responseError,
             timestamp: Date().timeIntervalSince1970
         )
         
@@ -520,10 +542,16 @@ public class JanusServer {
         do {
             let responseData = try JSONEncoder().encode(response)
             
-            // Send response datagram to reply_to socket (extracted from main binary)
+            // Send response datagram to reply_to socket with improved error handling
             let replySocketFD = Darwin.socket(AF_UNIX, SOCK_DGRAM, 0)
-            guard replySocketFD != -1 else { return }
+            guard replySocketFD != -1 else { 
+                debugLog("Failed to create reply socket")
+                return 
+            }
             defer { Darwin.close(replySocketFD) }
+            
+            // Add small delay to prevent race condition with client socket cleanup
+            try? await Task.sleep(nanoseconds: 1_000_000) // 1ms delay
             
             var replyAddr = sockaddr_un()
             replyAddr.sun_family = sa_family_t(AF_UNIX)
@@ -544,7 +572,7 @@ public class JanusServer {
                 }
             }
             
-            // Check for send errors, especially message too long (matching main binary)
+            // Check for send errors with improved error handling
             if sendResult == -1 {
                 let error = errno
                 if error == EMSGSIZE {
@@ -555,12 +583,10 @@ public class JanusServer {
                     // This is expected behavior in high-load scenarios, don't treat as critical error
                     debugLog("Client response socket no longer exists (\(replyTo)) - client may have timed out")
                 } else {
-                    print("ERROR: Failed to send response to \(replyTo): errno \(error)")
-                    debugLog("Error description: \(String(cString: strerror(error)))")
-                    debugLog("ReplyTo socket path exists: \(FileManager.default.fileExists(atPath: replyTo))")
+                    debugLog("Failed to send response to \(replyTo): errno \(error) - \(String(cString: strerror(error)))")
                 }
             } else {
-                debugLog("Response sent successfully to \(replyTo)")
+                debugLog("Response sent successfully to \(replyTo) (\(sendResult) bytes)")
             }
             
         } catch {

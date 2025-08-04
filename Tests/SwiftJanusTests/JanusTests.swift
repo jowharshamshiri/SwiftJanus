@@ -99,7 +99,7 @@ final class JanusTests: XCTestCase {
             commandId: "test-command-id",
             channelId: "testChannel",
             success: true,
-            result: result
+            result: AnyCodable(result)
         )
         
         let encoder = JSONEncoder()

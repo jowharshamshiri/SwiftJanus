@@ -73,18 +73,11 @@ final class ConcurrencyTests: XCTestCase {
         
         // Register test command handlers
         server.registerHandler("testCommand") { command in
-            return .success([
-                "processed": AnyCodable(true),
-                "id": command.args?["id"] ?? AnyCodable("unknown"),
-                "data": command.args?["data"] ?? AnyCodable("test")
-            ])
+            return .success(AnyCodable(true))
         }
         
         server.registerHandler("quickCommand") { command in
-            return .success([
-                "quick": AnyCodable(true),
-                "timestamp": AnyCodable(Date().timeIntervalSince1970)
-            ])
+            return .success(AnyCodable(true))
         }
         
         return (server, socketPath)
