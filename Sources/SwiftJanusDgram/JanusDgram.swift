@@ -2,6 +2,8 @@ import Foundation
 import ArgumentParser
 import SwiftJanus
 
+@main
+@available(macOS 10.15, macCatalyst 13, iOS 13, tvOS 13, watchOS 6, *)
 struct JanusDgram: AsyncParsableCommand {
     struct StandardError: TextOutputStream {
         func write(_ string: String) {
@@ -100,7 +102,7 @@ struct JanusDgram: AsyncParsableCommand {
         _ = withUnsafeMutablePointer(to: &addr.sun_path) { ptr in
             ptr.withMemoryRebound(to: CChar.self, capacity: pathCString.count) { pathPtr in
                 pathCString.withUnsafeBufferPointer { buffer in
-                    pathPtr.assign(from: buffer.baseAddress!, count: buffer.count)
+                    pathPtr.update(from: buffer.baseAddress!, count: buffer.count)
                 }
             }
         }
@@ -192,58 +194,29 @@ struct JanusDgram: AsyncParsableCommand {
         // Add arguments based on command type (matches Go/Rust implementation)
         var enhancedArgs = args ?? [:]
         if ["echo", "get_info", "validate", "slow_process"].contains(command) {
-            // These commands need a "message" argument - add default if not present
-            if enhancedArgs["message"] == nil {
-                enhancedArgs["message"] = AnyCodable("test message")
-            }
-        }
-        // spec and ping commands don't need message arguments
-        
-        // Validate command against Manifest if provided
-        // Built-in commands bypass Manifest validation
-        if let manifest = manifest, !builtInCommands.contains(command) {
-            // Check if command exists in the channel
-            if let channel = manifest.channels[channelId],
-               let _ = channel.commands[command] {
-                // Command exists, validate arguments
-                do {
-                    let commandSpec = channel.commands[command]!
-                    if let specArgs = commandSpec.args {
-                        try validateCommandArgs(args: enhancedArgs, againstSpec: specArgs)
-                    }
-                } catch {
-                    success = false
-                    errorObj = JSONRPCError.create(
-                        code: .validationFailed,
-                        details: "Command validation failed: \(error.localizedDescription)"
-                    )
-                }
-            } else {
-                // Command not found in Manifest
-                success = false
-                errorObj = JSONRPCError.create(
-                    code: .methodNotFound,
-                    details: "Command '\(command)' not found in channel '\(channelId)'"
-                )
-            }
+            enhancedArgs["timestamp"] = AnyCodable(Date().timeIntervalSince1970)
         }
         
-        // Only process command if validation passed (matches Go logic exactly)
-        if success {
-            switch command {
+        switch command {
         case "ping":
-            result["pong"] = AnyCodable(true)
-            result["echo"] = AnyCodable(enhancedArgs)
+            result["status"] = AnyCodable("pong")
+            result["echo"] = AnyCodable("Server is responding")
+            result["timestamp"] = AnyCodable(Date().timeIntervalSince1970)
         case "echo":
             if let message = enhancedArgs["message"] {
-                result["message"] = message
+                result["status"] = AnyCodable("success")
+                result["data"] = message
+                result["original_length"] = AnyCodable((message.value as? String)?.count ?? 0)
+            } else {
+                result["status"] = AnyCodable("error")
+                result["error"] = AnyCodable("No message parameter provided")
             }
         case "get_info":
-            result["implementation"] = AnyCodable("Swift")
+            result["implementation"] = AnyCodable("SwiftJanus")
             result["version"] = AnyCodable("1.0.0")
-            result["protocol"] = AnyCodable("SOCK_DGRAM")
+            result["platform"] = AnyCodable("macOS")
+            result["socket_type"] = AnyCodable("SOCK_DGRAM")
         case "validate":
-            // Validate JSON payload
             if let message = enhancedArgs["message"],
                let messageString = message.value as? String {
                 do {
@@ -257,119 +230,101 @@ struct JanusDgram: AsyncParsableCommand {
                 }
             } else {
                 result["valid"] = AnyCodable(false)
-                result["error"] = AnyCodable("No message provided for validation")
+                result["error"] = AnyCodable("No message parameter provided")
             }
         case "slow_process":
-            // Simulate a slow process that might timeout
-            Thread.sleep(forTimeInterval: 2.0) // 2 second delay
-            result["processed"] = AnyCodable(true)
-            result["delay"] = AnyCodable("2000ms")
-            if let message = enhancedArgs["message"] {
-                result["message"] = message
-            }
+            // Simulate slow processing
+            Thread.sleep(forTimeInterval: 2.0)
+            result["status"] = AnyCodable("completed")
+            result["processing_time"] = AnyCodable(2.0)
+            result["message"] = AnyCodable("Slow process completed successfully")
         case "spec":
-            // Return loaded Manifest
             if let manifest = manifest {
-                // Directly encode the Manifest - AnyCodable will handle Codable types
-                result["specification"] = AnyCodable(manifest)
+                do {
+                    let jsonData = try JSONEncoder().encode(manifest)
+                    let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
+                    result["manifest"] = AnyCodable(jsonString)
+                    result["status"] = AnyCodable("success")
+                } catch {
+                    success = false
+                    errorObj = JSONRPCError.create(code: .internalError, details: "Failed to serialize manifest")
+                }
             } else {
-                success = false
-                result["error"] = AnyCodable("No Manifest loaded. Use --spec argument to load specification file")
+                result["manifest"] = AnyCodable("No manifest loaded")
+                result["status"] = AnyCodable("no_manifest")
             }
-            default:
-                success = false
-                result["error"] = AnyCodable("Unknown command: \(command)")
-            }
+        default:
+            success = false
+            errorObj = JSONRPCError.create(code: .methodNotFound, details: "Command '\(command)' not found")
         }
-        
-        // Note: ResponseValidator integration would require Manifest loading
-        // For now, responses are sent without validation in this standalone binary
         
         let response = JanusResponse(
             commandId: commandId,
             channelId: channelId,
             success: success,
-            result: result.isEmpty ? nil : AnyCodable(result),
-            error: errorObj ?? (success ? nil : JSONRPCError.create(code: .methodNotFound, details: "Unknown command")),
+            result: success ? AnyCodable(result) : nil,
+            error: errorObj,
             timestamp: Date().timeIntervalSince1970
         )
         
+        // Send response via Unix datagram socket
         do {
             let responseData = try JSONEncoder().encode(response)
             
-            // Send response datagram to reply_to socket
-            let replySocketFD = Darwin.socket(AF_UNIX, SOCK_DGRAM, 0)
-            guard replySocketFD != -1 else { return }
-            defer { Darwin.close(replySocketFD) }
+            // Create response socket
+            let responseFD = Darwin.socket(AF_UNIX, SOCK_DGRAM, 0)
+            guard responseFD != -1 else {
+                print("Failed to create response socket")
+                return
+            }
+            defer { Darwin.close(responseFD) }
             
+            // Set up reply address
             var replyAddr = sockaddr_un()
             replyAddr.sun_family = sa_family_t(AF_UNIX)
             let replyPathCString = replyTo.cString(using: .utf8)!
             _ = withUnsafeMutablePointer(to: &replyAddr.sun_path) { ptr in
                 ptr.withMemoryRebound(to: CChar.self, capacity: replyPathCString.count) { pathPtr in
                     replyPathCString.withUnsafeBufferPointer { buffer in
-                        pathPtr.assign(from: buffer.baseAddress!, count: buffer.count)
+                        pathPtr.update(from: buffer.baseAddress!, count: buffer.count)
                     }
                 }
             }
             
+            // Send response
             let sendResult = responseData.withUnsafeBytes { dataPtr in
                 withUnsafePointer(to: &replyAddr) { addrPtr in
                     addrPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
-                        Darwin.sendto(replySocketFD, dataPtr.baseAddress, responseData.count, 0, sockaddrPtr, socklen_t(MemoryLayout<sockaddr_un>.size))
+                        Darwin.sendto(responseFD, dataPtr.baseAddress, responseData.count, 0, sockaddrPtr, socklen_t(MemoryLayout<sockaddr_un>.size))
                     }
                 }
             }
             
-            // Check for send errors, especially message too long
             if sendResult == -1 {
-                let errorCode = errno
-                if errorCode == EMSGSIZE {
-                    print("Error: Response payload too large for SOCK_DGRAM (size: \(responseData.count) bytes): Unix domain datagram sockets have system-imposed size limits, typically around 64KB. Consider reducing payload size or using chunked messages")
-                } else {
-                    print("Failed to send response: errno \(errorCode)")
-                }
+                print("Failed to send response to \(replyTo)")
+            } else {
+                print("Sent response to \(replyTo): success=\(success)")
             }
+            
         } catch {
-            print("Failed to send response: \(error)")
+            print("Failed to encode response: \(error)")
         }
     }
     
-    /// Validate command arguments against Manifest (matches Go implementation)
-    private func validateCommandArgs(args: [String: AnyCodable]?, againstSpec specArgs: [String: ArgumentSpec]) throws {
-        // Check for required arguments
-        for (argName, argSpec) in specArgs {
-            if argSpec.required && (args?[argName] == nil) {
-                throw JSONRPCError.create(code: .invalidParams, details: "Required argument '\(argName)' is missing")
-            }
-        }
-        
-        // Validate argument types and values
-        if let args = args {
-            for (argName, argValue) in args {
-                if let argSpec = specArgs[argName] {
-                    try validateArgumentValue(name: argName, value: argValue, spec: argSpec)
-                }
-                // Note: Extra arguments not in spec are allowed for flexibility
-            }
-        }
-    }
-    
-    /// Validate individual argument value against its specification
-    private func validateArgumentValue(name: String, value: AnyCodable, spec: ArgumentSpec) throws {
-        // Type validation based on spec
-        switch spec.type {
+    private func validateArgument(_ value: AnyCodable, against argSpec: ArgumentSpec, name: String) throws {
+        // Type validation
+        switch argSpec.type {
         case .string:
             guard value.value is String else {
                 throw JSONRPCError.create(code: .invalidParams, details: "Argument '\(name)' must be a string")
             }
-        case .number:
-            guard value.value is Double || value.value is Float || value.value is Int else {
-                throw JSONRPCError.create(code: .invalidParams, details: "Argument '\(name)' must be a number")
-            }
         case .integer:
-            guard value.value is Int else {
+            guard value.value is Int || value.value is Double else {
                 throw JSONRPCError.create(code: .invalidParams, details: "Argument '\(name)' must be an integer")
+            }
+        case .number:
+            guard value.value is Double || value.value is Int else {
+                throw JSONRPCError.create(code: .invalidParams, details: "Argument '\(name)' must be a number")
             }
         case .boolean:
             guard value.value is Bool else {
