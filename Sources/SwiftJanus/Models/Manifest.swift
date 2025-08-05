@@ -230,7 +230,10 @@ public struct AnyCodable: Codable, @unchecked Sendable {
             try container.encode(boolValue)
         case let arrayValue as [Any]:
             let encodableArray = arrayValue.compactMap { item -> AnyCodable? in
-                if let codableItem = item as? (any Codable) {
+                // Handle AnyCodable values directly to avoid double-wrapping
+                if let anyCodableItem = item as? AnyCodable {
+                    return anyCodableItem
+                } else if let codableItem = item as? (any Codable) {
                     return AnyCodable(codableItem)
                 }
                 return nil
@@ -238,7 +241,10 @@ public struct AnyCodable: Codable, @unchecked Sendable {
             try container.encode(encodableArray)
         case let dictValue as [String: Any]:
             let encodableDict = dictValue.compactMapValues { item -> AnyCodable? in
-                if let codableItem = item as? (any Codable) {
+                // Handle AnyCodable values directly to avoid double-wrapping
+                if let anyCodableItem = item as? AnyCodable {
+                    return anyCodableItem
+                } else if let codableItem = item as? (any Codable) {
                     return AnyCodable(codableItem)
                 }
                 return nil

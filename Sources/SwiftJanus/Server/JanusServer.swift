@@ -7,27 +7,7 @@ public typealias JanusCommandHandler = (JanusCommand) -> Result<AnyCodable, JSON
 /// Event handler function type for server events
 public typealias ServerEventHandler = (Any) -> Void
 
-/// Client connection information for SOCK_DGRAM servers
-public struct ClientConnection {
-    let id: String
-    let address: String
-    var lastSeen: Date
-    var messageCount: Int
-    let connectedAt: Date
-    
-    init(address: String) {
-        self.id = UUID().uuidString
-        self.address = address
-        self.lastSeen = Date()
-        self.messageCount = 0
-        self.connectedAt = Date()
-    }
-    
-    mutating func updateActivity() {
-        self.lastSeen = Date()
-        self.messageCount += 1
-    }
-}
+// ClientConnection removed - SOCK_DGRAM is stateless, no persistent client objects needed
 
 /// Server configuration options
 public struct ServerConfig {
@@ -37,14 +17,16 @@ public struct ServerConfig {
     let cleanupOnStart: Bool
     let cleanupOnShutdown: Bool
     let debugLogging: Bool
+    let maxConcurrentHandlers: Int
     
-    public init(maxConnections: Int = 100, defaultTimeout: TimeInterval = 30.0, maxMessageSize: Int = 65536, cleanupOnStart: Bool = true, cleanupOnShutdown: Bool = true, debugLogging: Bool = false) {
+    public init(maxConnections: Int = 100, defaultTimeout: TimeInterval = 30.0, maxMessageSize: Int = 65536, cleanupOnStart: Bool = true, cleanupOnShutdown: Bool = true, debugLogging: Bool = false, maxConcurrentHandlers: Int = 100) {
         self.maxConnections = maxConnections
         self.defaultTimeout = defaultTimeout
         self.maxMessageSize = maxMessageSize
         self.cleanupOnStart = cleanupOnStart
         self.cleanupOnShutdown = cleanupOnShutdown
         self.debugLogging = debugLogging
+        self.maxConcurrentHandlers = maxConcurrentHandlers
     }
 }
 
@@ -95,29 +77,8 @@ public class ServerEventEmitter {
 /// Server state for tracking clients and activity
 /// Note: For SOCK_DGRAM, each command creates an ephemeral client socket, 
 /// so "clients" represent individual command socket addresses, not persistent connections
-public struct ServerState {
-    var clients: [String: ClientConnection] = [:]
-    var totalConnections: Int = 0
-    var totalCommands: Int = 0
-    var startTime: Date = Date()
-    
-    mutating func addClient(address: String) -> ClientConnection {
-        let client = ClientConnection(address: address)
-        clients[address] = client
-        totalConnections += 1
-        return client
-    }
-    
-    mutating func updateClientActivity(address: String) {
-        clients[address]?.updateActivity()
-        totalCommands += 1
-    }
-    
-    mutating func removeInactiveClients(timeout: TimeInterval = 60) { // 1 minute default for SOCK_DGRAM ephemeral sockets
-        let cutoff = Date().addingTimeInterval(-timeout)
-        clients = clients.filter { $0.value.lastSeen > cutoff }
-    }
-}
+// ServerState removed - SOCK_DGRAM is stateless, no client tracking needed
+// This matches Go/Rust server implementations that don't track ephemeral datagram clients
 
 /// High-level SOCK_DGRAM Unix socket server
 /// Extracted from SwiftJanusDgram main binary and made reusable
@@ -126,9 +87,9 @@ public class JanusServer {
     private var isRunning = false
     private let manifest: Manifest?
     private let config: ServerConfig
-    private var serverState = ServerState()
     private let eventEmitter = ServerEventEmitter()
-    private let stateQueue = DispatchQueue(label: "server.state", attributes: .concurrent)
+    // Removed activeHandlers and handlerQueue - keep it simple like Go server
+    private let serverStartTime = Date()
     
     public init(manifest: Manifest? = nil, config: ServerConfig = ServerConfig()) {
         self.manifest = manifest
@@ -142,26 +103,14 @@ public class JanusServer {
         return eventEmitter
     }
     
-    /// Get server statistics
-    public func getServerStats() -> [String: Any] {
-        return stateQueue.sync {
-            let uptime = Date().timeIntervalSince(serverState.startTime)
-            return [
-                "uptime": uptime,
-                "totalConnections": serverState.totalConnections,
-                "totalCommands": serverState.totalCommands,
-                "activeClients": serverState.clients.count,
-                "clients": serverState.clients.mapValues { client in
-                    [
-                        "id": client.id,
-                        "address": client.address,
-                        "lastSeen": client.lastSeen.timeIntervalSince1970,
-                        "messageCount": client.messageCount,
-                        "connectedAt": client.connectedAt.timeIntervalSince1970
-                    ]
-                }
-            ]
-        }
+    /// Get server statistics (stateless - no client tracking for SOCK_DGRAM)
+    public func getServerStats() -> [String: AnyCodable] {
+        let uptime = Date().timeIntervalSince(serverStartTime)
+        return [
+            "uptime": AnyCodable(uptime),
+            "serverType": AnyCodable("SOCK_DGRAM (stateless)"),
+            "startTime": AnyCodable(serverStartTime.timeIntervalSince1970)
+        ]
     }
     
     /// Register a command handler
@@ -250,7 +199,9 @@ public class JanusServer {
         
         // Receive datagrams (extracted from main binary)
         while isRunning {
-            var buffer = Data(count: 64 * 1024)
+            // Use configurable buffer size with validation against system limits
+            let maxBufferSize = min(config.maxMessageSize, 64 * 1024)
+            var buffer = Data(count: maxBufferSize)
             let bufferSize = buffer.count
             var senderAddr = sockaddr_un()
             var senderAddrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
@@ -287,13 +238,19 @@ public class JanusServer {
                 continue
             }
             
-            // Extract sender socket path for client tracking
-            let senderSocketPath = withUnsafePointer(to: &senderAddr.sun_path) { pathPtr in
-                String(cString: UnsafeRawPointer(pathPtr).assumingMemoryBound(to: CChar.self))
+            // Extract sender socket path for client tracking (like Go/Rust/TypeScript)
+            let senderAddrCopy = senderAddr  // Copy to avoid overlapping access
+            let senderSocketPath = withUnsafePointer(to: senderAddrCopy.sun_path) { pathPtr in
+                let cStringPtr = UnsafeRawPointer(pathPtr).assumingMemoryBound(to: CChar.self)
+                // Use consistent UTF-8 handling without base64 fallback (like other implementations)
+                return String(cString: cStringPtr)
             }
             
             let receivedData = buffer.prefix(bytesReceived)
-            await processReceivedDatagram(receivedData, senderAddress: senderSocketPath)
+            // Process message concurrently with handler limits (like TypeScript server)
+            Task { [self] in
+                await processReceivedDatagramWithLimits(receivedData, senderAddress: senderSocketPath)
+            }
         }
         
         debugLog("Server loop completed, isRunning: \(isRunning)")
@@ -314,35 +271,33 @@ public class JanusServer {
         }
     }
     
+    private func processReceivedDatagramWithLimits(_ data: Data, senderAddress: String) async {
+        // No concurrency limits - keep it simple like Go server
+        await processReceivedDatagram(data, senderAddress: senderAddress)
+    }
+    
     private func processReceivedDatagram(_ data: Data, senderAddress: String) async {
-        do {
-            let cmd = try JSONDecoder().decode(JanusCommand.self, from: data)
-            debugLog("Received datagram: \(cmd.command) (ID: \(cmd.id)) from socket: \(senderAddress)")
+        // Simple JSON parsing like Go server - no complex error handling
+        guard let cmd = try? JSONDecoder().decode(JanusCommand.self, from: data) else {
+            debugLog("Failed to decode JanusCommand from \(senderAddress)")
+            return
+        }
+        
+        debugLog("Received command: \(cmd.command) (ID: \(cmd.id))")
+        
+        // Emit command event
+        eventEmitter.emit("command", data: cmd)
+        
+        // Send response via reply_to if specified
+        if let replyTo = cmd.replyTo {
+            await sendResponse(cmd.id, cmd.channelId, cmd.command, cmd.args, replyTo)
             
-            // Track client activity (using sender socket address as client identifier for SOCK_DGRAM)
-            stateQueue.async(flags: .barrier) {
-                if self.serverState.clients[senderAddress] == nil {
-                    let client = self.serverState.addClient(address: senderAddress)
-                    self.eventEmitter.emit("connection", data: client)
-                }
-                self.serverState.updateClientActivity(address: senderAddress)
-            }
-            
-            // Emit command event
-            eventEmitter.emit("command", data: cmd)
-            
-            // Send response via reply_to if specified
-            if let replyTo = cmd.replyTo {
-                debugLog("Processing command '\(cmd.command)' with replyTo: \(replyTo)")
-                await sendResponse(cmd.id, cmd.channelId, cmd.command, cmd.args, replyTo)
-            } else {
-                debugLog("No replyTo specified for command '\(cmd.command)'")
-            }
-        } catch {
-            print("Failed to parse datagram: \(error)")
-            eventEmitter.emit("error", data: ["error": error.localizedDescription, "data": data])
+            // Emit response event  
+            eventEmitter.emit("response", data: ["commandId": cmd.id, "replyTo": replyTo])
         }
     }
+    
+    // Removed complex malformed JSON error response - keep it simple like Go server
     
     private func sendResponse(_ commandId: String, _ channelId: String, _ command: String, _ args: [String: AnyCodable]?, _ replyTo: String) async {
         debugLog("sendResponse called for command '\(command)' ID '\(commandId)'")
@@ -384,47 +339,24 @@ public class JanusServer {
                 switch command {
                 case "server_stats":
                     let stats = self.getServerStats()
-                    // Convert stats to AnyCodable manually to handle Any type
-                    var statsResult: [String: AnyCodable] = [:]
-                    for (key, value) in stats {
-                        if let stringValue = value as? String {
-                            statsResult[key] = AnyCodable(stringValue)
-                        } else if let intValue = value as? Int {
-                            statsResult[key] = AnyCodable(intValue)
-                        } else if let doubleValue = value as? Double {
-                            statsResult[key] = AnyCodable(doubleValue)
-                        } else if let dictValue = value as? [String: Any] {
-                            // Handle nested dictionaries
-                            var nestedDict: [String: AnyCodable] = [:]
-                            for (nestedKey, nestedValue) in dictValue {
-                                if let nestedString = nestedValue as? String {
-                                    nestedDict[nestedKey] = AnyCodable(nestedString)
-                                } else if let nestedInt = nestedValue as? Int {
-                                    nestedDict[nestedKey] = AnyCodable(nestedInt)
-                                } else if let nestedDouble = nestedValue as? Double {
-                                    nestedDict[nestedKey] = AnyCodable(nestedDouble)
-                                }
-                            }
-                            statsResult[key] = AnyCodable(nestedDict)
-                        }
-                    }
-                    return (true, AnyCodable(statsResult), nil as JSONRPCError?)
+                    // Direct stats return - already AnyCodable
+                    return (true, AnyCodable(stats), nil as JSONRPCError?)
                 case "ping":
-                    let pingResult: [String: AnyCodable] = [
+                    let pingResult = [
                         "pong": AnyCodable(true),
                         "timestamp": AnyCodable(Date().timeIntervalSince1970)
                     ]
                     return (true, AnyCodable(pingResult), nil as JSONRPCError?)
                 case "echo":
-                    let echoResult: [String: AnyCodable]
-                    if let message = args?["message"] {
-                        echoResult = ["echo": message]
-                    } else {
-                        echoResult = ["echo": AnyCodable("Hello from Swift SOCK_DGRAM server!")]
-                    }
+                    // Return dictionary format like Go server for consistency  
+                    let message = args?["message"]?.value as? String ?? "Hello from Swift SOCK_DGRAM server!"
+                    let echoResult = [
+                        "echo": AnyCodable(message),
+                        "timestamp": AnyCodable(Date().timeIntervalSince1970)
+                    ]
                     return (true, AnyCodable(echoResult), nil as JSONRPCError?)
                 case "get_info":
-                    let infoResult: [String: AnyCodable] = [
+                    let infoResult = [
                         "server": AnyCodable("Swift Janus"),
                         "version": AnyCodable("1.0.0"),
                         "timestamp": AnyCodable(Date().timeIntervalSince1970)
@@ -435,20 +367,20 @@ public class JanusServer {
                     if let message = args?["message"]?.value as? String {
                         do {
                             _ = try JSONSerialization.jsonObject(with: message.data(using: .utf8) ?? Data())
-                            let validateResult: [String: AnyCodable] = [
+                            let validateResult = [
                                 "valid": AnyCodable(true),
                                 "message": AnyCodable("Valid JSON")
                             ]
                             return (true, AnyCodable(validateResult), nil as JSONRPCError?)
                         } catch {
-                            let validateResult: [String: AnyCodable] = [
+                            let validateResult = [
                                 "valid": AnyCodable(false),
                                 "error": AnyCodable("Invalid JSON: \(error)")
                             ]
                             return (true, AnyCodable(validateResult), nil as JSONRPCError?)
                         }
                     } else {
-                        let validateResult: [String: AnyCodable] = [
+                        let validateResult = [
                             "valid": AnyCodable(false),
                             "error": AnyCodable("No message provided for validation")
                         ]
@@ -457,7 +389,7 @@ public class JanusServer {
                 case "slow_process":
                     // Simulate a slow process that might timeout
                     try await Task.sleep(nanoseconds: 2_000_000_000) // 2 second delay
-                    var slowResult: [String: AnyCodable] = [
+                    var slowResult = [
                         "processed": AnyCodable(true),
                         "delay": AnyCodable("2000ms")
                     ]
@@ -472,34 +404,39 @@ public class JanusServer {
             }
         }
         
-        // Execute with timeout
+        // Execute with simple timeout - no TaskGroup complexity
         do {
             debugLog("Starting command execution with timeout")
-            let timeoutTask = Task {
-                try await Task.sleep(nanoseconds: UInt64(config.defaultTimeout * 1_000_000_000))
-                debugLog("Command timeout triggered after \(config.defaultTimeout) seconds")
-                let timeoutError = JSONRPCError.create(code: .internalError, details: "Command timeout after \(config.defaultTimeout) seconds")
-                return (false, AnyCodable(""), timeoutError)
-            }
             
-            debugLog("Setting up TaskGroup")
-            let (commandSuccess, commandResult, taskError) = await withTaskGroup(of: (Bool, AnyCodable, JSONRPCError?).self, returning: (Bool, AnyCodable, JSONRPCError?).self) { group in
+            // Simple async timeout using withThrowingTaskGroup for clean timeout handling
+            let (commandSuccess, commandResult, taskError): (Bool, AnyCodable, JSONRPCError?) = try await withThrowingTaskGroup(of: (Bool, AnyCodable, JSONRPCError?).self) { group in
+                // Add command execution task
                 group.addTask { [self] in
-                    debugLog("Command task starting")
-                    let result = try! await commandTask.value
-                    debugLog("Command task completed with result: \(result)")
-                    return result
-                }
-                group.addTask { [self] in
-                    debugLog("Timeout task starting")
-                    let result = try! await timeoutTask.value
-                    debugLog("Timeout task completed")
-                    return result
+                    do {
+                        let result = try await commandTask.value
+                        self.debugLog("Command completed successfully")
+                        return result
+                    } catch {
+                        self.debugLog("Command failed: \(error)")
+                        let taskError = JSONRPCError.create(code: .internalError, details: "Command execution failed: \(error.localizedDescription)")
+                        return (false, AnyCodable(""), taskError)
+                    }
                 }
                 
-                debugLog("Waiting for first task to complete")
-                let result = await group.next()!
-                debugLog("First task completed with result: \(result)")
+                // Add timeout task
+                group.addTask { [self] in
+                    try await Task.sleep(nanoseconds: UInt64(self.config.defaultTimeout * 1_000_000_000))
+                    self.debugLog("Command timeout after \(self.config.defaultTimeout) seconds")
+                    let timeoutError = JSONRPCError.create(code: .internalError, details: "Command timeout after \(self.config.defaultTimeout) seconds")
+                    return (false, AnyCodable(""), timeoutError)
+                }
+                
+                // Return first completed task, cancel others
+                guard let result = try await group.next() else {
+                    let taskError = JSONRPCError.create(code: .internalError, details: "No task completed")
+                    return (false, AnyCodable(""), taskError)
+                }
+                
                 group.cancelAll()
                 return result
             }
@@ -507,7 +444,14 @@ public class JanusServer {
             success = commandSuccess
             result = success ? commandResult : nil
             responseError = taskError
-            debugLog("Command execution completed - success: \(success), result: \(String(describing: result))")
+            debugLog("Command execution completed - success: \(success)")
+            
+        } catch {
+            // Handle task group errors
+            debugLog("Task group failed: \(error)")
+            success = false
+            result = nil
+            responseError = JSONRPCError.create(code: .internalError, details: "Command execution failed: \(error.localizedDescription)")
         }
         
         // Validate response against Manifest if available
@@ -550,12 +494,24 @@ public class JanusServer {
             }
             defer { Darwin.close(replySocketFD) }
             
-            // Add small delay to prevent race condition with client socket cleanup
-            try? await Task.sleep(nanoseconds: 1_000_000) // 1ms delay
+            // No artificial delays - direct response sending like Go/Rust servers
             
             var replyAddr = sockaddr_un()
             replyAddr.sun_family = sa_family_t(AF_UNIX)
-            let replyPathCString = replyTo.cString(using: .utf8)!
+            
+            // Safe UTF-8 string conversion with proper error handling
+            guard let replyPathCString = replyTo.cString(using: .utf8) else {
+                debugLog("Failed to convert replyTo path to UTF-8: \(replyTo)")
+                return
+            }
+            
+            // Validate path length against Unix socket limits
+            let maxPathLength = MemoryLayout.size(ofValue: replyAddr.sun_path) - 1
+            guard replyPathCString.count <= maxPathLength else {
+                debugLog("Reply path too long: \(replyPathCString.count) > \(maxPathLength)")
+                return
+            }
+            
             withUnsafeMutablePointer(to: &replyAddr.sun_path) { ptr in
                 ptr.withMemoryRebound(to: CChar.self, capacity: replyPathCString.count) { pathPtr in
                     replyPathCString.withUnsafeBufferPointer { buffer in
@@ -591,6 +547,54 @@ public class JanusServer {
             
         } catch {
             print("Error encoding response: \(error)")
+        }
+    }
+    
+    private func sendRawResponse(_ responseData: Data, to replyTo: String) async {
+        let replySocketFD = Darwin.socket(AF_UNIX, SOCK_DGRAM, 0)
+        guard replySocketFD != -1 else { 
+            debugLog("Failed to create reply socket for raw response")
+            return 
+        }
+        defer { Darwin.close(replySocketFD) }
+        
+        // No artificial delays for raw responses
+        
+        var replyAddr = sockaddr_un()
+        replyAddr.sun_family = sa_family_t(AF_UNIX)
+        
+        guard let replyPathCString = replyTo.cString(using: .utf8) else {
+            debugLog("Failed to convert replyTo path to UTF-8 for raw response: \(replyTo)")
+            return
+        }
+        
+        let maxPathLength = MemoryLayout.size(ofValue: replyAddr.sun_path) - 1
+        guard replyPathCString.count <= maxPathLength else {
+            debugLog("Reply path too long for raw response: \(replyPathCString.count) > \(maxPathLength)")
+            return
+        }
+        
+        withUnsafeMutablePointer(to: &replyAddr.sun_path) { ptr in
+            ptr.withMemoryRebound(to: CChar.self, capacity: replyPathCString.count) { pathPtr in
+                replyPathCString.withUnsafeBufferPointer { buffer in
+                    pathPtr.update(from: buffer.baseAddress!, count: buffer.count)
+                }
+            }
+        }
+        
+        let sendResult = responseData.withUnsafeBytes { dataPtr in
+            withUnsafePointer(to: &replyAddr) { addrPtr in
+                addrPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
+                    Darwin.sendto(replySocketFD, dataPtr.baseAddress, responseData.count, 0, sockaddrPtr, socklen_t(MemoryLayout<sockaddr_un>.size))
+                }
+            }
+        }
+        
+        if sendResult == -1 {
+            let error = errno
+            debugLog("Failed to send raw response to \(replyTo): errno \(error)")
+        } else {
+            debugLog("Raw response sent successfully to \(replyTo) (\(sendResult) bytes)")
         }
     }
     

@@ -62,11 +62,17 @@ public class JanusClient {
         // Fetch Manifest from server using spec command (bypass validation to avoid circular dependency)
         do {
             let specResponse = try await sendBuiltinCommand("spec", args: nil, timeout: 10.0)
-            if specResponse.success,
-               let resultData = specResponse.result,
-               let jsonData = try? JSONSerialization.data(withJSONObject: resultData),
-               let fetchedSpec = try? ManifestParser().parseJSON(jsonData) {
-                self.manifest = fetchedSpec
+            if specResponse.success {
+                // Try to parse the AnyCodable result as JSON directly
+                do {
+                    let encoder = JSONEncoder()
+                    let jsonData = try encoder.encode(specResponse.result)
+                    let fetchedSpec = try ManifestParser().parseJSON(jsonData)
+                    self.manifest = fetchedSpec
+                } catch {
+                    // If parsing fails, continue without validation
+                    self.manifest = nil
+                }
             } else {
                 // If spec command fails, continue without validation
                 self.manifest = nil
