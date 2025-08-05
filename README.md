@@ -1,25 +1,19 @@
 # SwiftJanus
 
-A **production-ready**, **enterprise-grade** Swift library for Unix socket-based API communication with security features, comprehensive attack prevention, and bulletproof reliability. Designed for secure inter-process communication in production environments.
+A production-ready Swift library for Unix domain socket communication with **SOCK_DGRAM connectionless communication** and automatic ID management. Designed for secure cross-platform inter-process communication.
 
-## 🛡️ Security Features
+## Features
 
-- **🔒 Path Traversal Protection**: Blocks `../` attacks and restricts sockets to safe directories
-- **⚡ Resource Limits**: Configurable limits on connections, message sizes, and pending operations
-- **🧹 Input Sanitization**: Validates all input data, blocks null bytes and malformed content
-- **📊 Message Framing**: Length-prefixed messages prevent data corruption and injection
-- **🔍 Channel Isolation**: Commands are strictly isolated by channel with security verification
-- **⏱️ Bilateral Timeouts**: Both caller and consumer receive timeout protection
-- **🚫 Attack Prevention**: Comprehensive protection against various attack vectors
-
-## 🚀 Core Features
-
-- **Stateless Communication**: Each command creates independent connections with UUID tracking
-- **Connection Pooling**: Efficient connection reuse with configurable limits
-- **Manifest**: Rich JSON/YAML format with validation constraints
-- **Comprehensive Error Handling**: Detailed error types with security context
-- **Memory Management**: Automatic cleanup with configurable resource monitoring
-- **High Performance**: Optimized for concurrent operations and large payloads
+- **Connectionless SOCK_DGRAM**: Unix domain datagram sockets with reply-to mechanism
+- **Automatic ID Management**: RequestHandle system hides UUID complexity from users
+- **Native Swift Async**: Swift async/await patterns for non-blocking operations
+- **Cross-Language Compatibility**: Perfect compatibility with Go, Rust, and TypeScript implementations
+- **Dynamic Specification**: Server-provided Manifests with auto-fetch validation
+- **Security Framework**: 27 comprehensive security mechanisms and attack prevention
+- **JSON-RPC 2.0 Compliance**: Standardized error codes and response format
+- **Type Safety**: Swift's type system with Codable integration
+- **Production Ready**: Enterprise-grade error handling and resource management
+- **Cross-Platform**: Works on macOS and iOS with sandbox compatibility
 
 ## 📋 Requirements
 
@@ -47,82 +41,190 @@ dependencies: [
 
 ## Usage
 
-### Basic Setup with Security Configuration
+### Simple Client Example
 
 ```swift
 import SwiftJanus
 
-// Configure security and resource limits
-let config = JanusClientConfig(
-    maxConcurrentConnections: 50,
-    maxMessageSize: 5 * 1024 * 1024, // 5MB
-    connectionTimeout: 15.0,
-    maxPendingCommands: 100,
-    maxCommandHandlers: 200,
-    enableResourceMonitoring: true,
-    maxChannelNameLength: 64,
-    maxCommandNameLength: 64,
-    maxArgsDataSize: 1024 * 1024 // 1MB
+// Create client with automatic Manifest fetching
+let client = try await JanusClient(
+    socketPath: "/tmp/my_socket.sock",
+    channelId: "my_channel"
 )
 
-// Initialize with security configuration
-let client = try JanusClient(
-    socketPath: "/tmp/my-api.sock", // Automatically validated for security
-    channelId: "secure-channel",
-    manifest: manifestDocument,
-    config: config
-)
+// Send command - ID management is automatic
+let args: [String: AnyCodable] = [
+    "message": AnyCodable("Hello World")
+]
+
+let response = try await client.sendCommand("echo", args: args)
+print("Response: \(response)")
 ```
 
-### Command Handling with Security
+### Advanced Request Tracking
 
 ```swift
-// Register secure command handlers with validation
-try client.registerCommandHandler("processData") { command, args in
-    // All input is pre-validated and sanitized
-    // Handlers automatically get timeout protection
-    guard let input = args?["input"]?.value as? String else {
-        throw JanusError.invalidArgument("input", "Required string parameter")
-    }
-    
-    let result = await processSecurely(input)
-    return ["result": AnyCodable(result)]
+import SwiftJanus
+
+let client = try await JanusClient(
+    socketPath: "/tmp/my_socket.sock",
+    channelId: "my_channel"
+)
+
+let args: [String: AnyCodable] = [
+    "data": AnyCodable("processing_task")
+]
+
+// Send command with RequestHandle for tracking
+let (handle, responseTask) = try await client.sendCommandWithHandle(
+    "process_data",
+    args: args,
+    timeout: 30.0
+)
+
+print("Request started: \(handle.getCommand()) on channel \(handle.getChannel())")
+
+// Can check status or cancel if needed
+if handle.isCancelled() {
+    print("Request was cancelled")
+    return
 }
 
-// Start listening (persistent connection with security monitoring)
+// Wait for response
+do {
+    let response = try await responseTask.value
+    print("Success: \(response)")
+} catch {
+    try client.cancelRequest(handle)
+    print("Request failed or cancelled: \(error)")
+}
+```
+
+### Server with Command Handlers
+
+```swift
+import SwiftJanus
+
+let client = try await JanusClient(
+    socketPath: "/tmp/my_socket.sock",
+    channelId: "my_channel"
+)
+
+// Register command handlers - returns direct values
+try client.registerCommandHandler("echo") { command in
+    guard let message = command.args?["message"]?.value as? String else {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.invalidParams,
+            message: "message parameter required"
+        )
+    }
+    
+    // Return direct value - no dictionary wrapping needed
+    return [
+        "echo": AnyCodable(message),
+        "timestamp": AnyCodable(command.timestamp)
+    ]
+}
+
+// Register async handler
+try client.registerCommandHandler("processData") { command in
+    guard let data = command.args?["data"]?.value as? String else {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.invalidParams,
+            message: "data parameter required"
+        )
+    }
+    
+    // Simulate async processing
+    try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+    
+    return [
+        "result": AnyCodable("Processed: \(data)"),
+        "processed_at": AnyCodable(Date().timeIntervalSince1970)
+    ]
+}
+
+print("Server listening on /tmp/my_socket.sock...")
 try await client.startListening()
 ```
 
-### Secure Command Sending
+### Fire-and-Forget Commands
 
 ```swift
-// Send commands with comprehensive error handling
+// Send command without waiting for response
+let args: [String: AnyCodable] = [
+    "event": AnyCodable("user_login"),
+    "user_id": AnyCodable("12345")
+]
+
 do {
-    let response = try await client.sendCommand(
-        "processData", 
-        args: ["input": AnyCodable("secure data")],
-        timeout: 30.0,
-        onTimeout: { commandId, timeout in
-            print("⚠️ Command \(commandId) timed out after \(timeout)s")
-        }
-    )
+    try await client.sendCommandNoResponse("log_event", args: args)
+    print("Event logged successfully")
+} catch {
+    print("Failed to log event: \(error)")
+}
+```
+
+## RequestHandle Management
+
+```swift
+// Get all pending requests
+let handles = client.getPendingRequests()
+print("Pending requests: \(handles.count)")
+
+for handle in handles {
+    print("Request: \(handle.getCommand()) on \(handle.getChannel()) (created: \(handle.getTimestamp()))")
     
-    print("✅ Command completed: \(response.commandId)")
-    
-} catch JanusError.resourceLimit(let reason) {
-    print("🚫 Resource limit: \(reason)")
-} catch JanusError.securityViolation(let reason) {
-    print("🔒 Security violation: \(reason)")
-} catch JanusError.commandTimeout(let id, let timeout) {
-    print("⏰ Command \(id) timed out after \(timeout)s")
+    // Check status
+    let status = client.getRequestStatus(handle)
+    switch status {
+    case .pending:
+        print("Status: Still processing")
+    case .completed:
+        print("Status: Completed")
+    case .cancelled:
+        print("Status: Cancelled")
+    }
 }
 
-// Fire-and-forget with UUID tracking
-let commandId = try await client.publishCommand(
-    "logEvent", 
-    args: ["event": AnyCodable("audit_log"), "timestamp": AnyCodable(Date().timeIntervalSince1970)]
+// Cancel all pending requests
+let cancelled = client.cancelAllRequests()
+print("Cancelled \(cancelled) requests")
+```
+
+## Configuration
+
+```swift
+let client = try await JanusClient(
+    socketPath: "/tmp/my_socket.sock",
+    channelId: "my_channel",
+    maxMessageSize: 10 * 1024 * 1024, // 10MB
+    defaultTimeout: 30.0,
+    datagramTimeout: 5.0,
+    enableValidation: true
 )
-print("📝 Logged with ID: \(commandId)")
+```
+
+## Error Handling
+
+```swift
+do {
+    let response = try await client.sendCommand("echo", args: args)
+    print("Success: \(response)")
+} catch let error as JSONRPCError {
+    switch error.code {
+    case JSONRPCErrorCode.methodNotFound:
+        print("Command not found: \(error.message)")
+    case JSONRPCErrorCode.invalidParams:
+        print("Invalid parameters: \(error.message)")
+    case JSONRPCErrorCode.internalError:
+        print("Internal error: \(error.message)")
+    case JSONRPCErrorCode.validationFailed:
+        print("Validation failed: \(error.message)")
+    default:
+        print("Error \(error.code): \(error.message)")
+    }
+}
 ```
 
 ## Manifest Format

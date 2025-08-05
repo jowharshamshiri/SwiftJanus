@@ -11,6 +11,10 @@ public class JanusClient {
     private let enableValidation: Bool
     private let responseTracker: ResponseTracker
     
+    // Request lifecycle management (automatic ID system)
+    private var requestRegistry: [String: RequestHandle] = [:]
+    private let registryQueue = DispatchQueue(label: "janus.request.registry", attributes: .concurrent)
+    
     public init(
         socketPath: String,
         channelId: String,
@@ -535,6 +539,97 @@ public class JanusClient {
             messagesSent: connectionState.messagesSent + messagesSent,
             responsesReceived: connectionState.responsesReceived + responsesReceived
         )
+    }
+    
+    // MARK: - Automatic ID Management Methods (F0193-F0216)
+    
+    /// Send command with handle - returns RequestHandle for tracking
+    /// Hides UUID complexity from users while providing request lifecycle management
+    public func sendCommandWithHandle(
+        _ command: String,
+        args: [String: AnyCodable]? = nil,
+        timeout: TimeInterval? = nil
+    ) async throws -> (RequestHandle, Task<JanusResponse, Error>) {
+        // Generate internal UUID (hidden from user)
+        let commandId = UUID().uuidString
+        
+        // Create request handle for user
+        let handle = RequestHandle(internalID: commandId, command: command, channel: channelId)
+        
+        // Register the request handle
+        registryQueue.async(flags: .barrier) {
+            self.requestRegistry[commandId] = handle
+        }
+        
+        // Create async task for command execution
+        let task = Task<JanusResponse, Error> {
+            defer {
+                // Clean up request handle when done
+                self.registryQueue.async(flags: .barrier) {
+                    self.requestRegistry.removeValue(forKey: commandId)
+                }
+            }
+            
+            return try await self.sendCommand(command, args: args, timeout: timeout)
+        }
+        
+        return (handle, task)
+    }
+    
+    /// Get request status by handle
+    public func getRequestStatus(_ handle: RequestHandle) -> RequestStatus {
+        if handle.isCancelled() {
+            return .cancelled
+        }
+        
+        return registryQueue.sync {
+            if requestRegistry[handle.getInternalID()] != nil {
+                return RequestStatus.pending
+            } else {
+                return RequestStatus.completed
+            }
+        }
+    }
+    
+    /// Cancel request using handle
+    public func cancelRequest(_ handle: RequestHandle) throws {
+        if handle.isCancelled() {
+            throw JSONRPCError.create(code: .validationFailed, details: "Request already cancelled")
+        }
+        
+        var found = false
+        registryQueue.sync(flags: .barrier) {
+            if self.requestRegistry[handle.getInternalID()] != nil {
+                found = true
+                handle.markCancelled()
+                self.requestRegistry.removeValue(forKey: handle.getInternalID())
+            }
+        }
+        
+        if !found {
+            throw JSONRPCError.create(code: .validationFailed, details: "Request not found or already completed")
+        }
+    }
+    
+    /// Get all pending request handles
+    public func getPendingRequests() -> [RequestHandle] {
+        return registryQueue.sync {
+            return Array(requestRegistry.values)
+        }
+    }
+    
+    /// Cancel all pending requests
+    public func cancelAllRequests() -> Int {
+        return registryQueue.sync(flags: .barrier) {
+            let count = requestRegistry.count
+            
+            for handle in requestRegistry.values {
+                handle.markCancelled()
+            }
+            
+            requestRegistry.removeAll()
+            return count
+        }
     }
 }
 

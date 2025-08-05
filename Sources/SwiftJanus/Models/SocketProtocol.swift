@@ -102,3 +102,65 @@ public enum MessageType: String, Codable, Sendable {
 
 // Legacy JanusError enum removed - all error handling now uses JSONRPCError directly
 // This maintains compatibility with Go, Rust, and TypeScript implementations
+
+/// RequestHandle provides a user-friendly interface to track and manage requests
+/// Hides internal UUID complexity from users
+public final class RequestHandle: @unchecked Sendable {
+    private let internalID: String
+    private let command: String
+    private let channel: String
+    private let timestamp: Date
+    private let cancelledFlag = NSLock()
+    private var cancelled = false
+    
+    /// Create a new request handle from internal UUID
+    public init(internalID: String, command: String, channel: String) {
+        self.internalID = internalID
+        self.command = command
+        self.channel = channel
+        self.timestamp = Date()
+    }
+    
+    /// Get the command name for this request
+    public func getCommand() -> String {
+        return command
+    }
+    
+    /// Get the channel ID for this request
+    public func getChannel() -> String {
+        return channel
+    }
+    
+    /// Get when this request was created
+    public func getTimestamp() -> Date {
+        return timestamp
+    }
+    
+    /// Check if this request has been cancelled
+    public func isCancelled() -> Bool {
+        cancelledFlag.lock()
+        defer { cancelledFlag.unlock() }
+        return cancelled
+    }
+    
+    /// Get the internal UUID (for internal use only)
+    public func getInternalID() -> String {
+        return internalID
+    }
+    
+    /// Mark this handle as cancelled (internal use only)
+    internal func markCancelled() {
+        cancelledFlag.lock()
+        defer { cancelledFlag.unlock() }
+        cancelled = true
+    }
+}
+
+/// RequestStatus represents the status of a tracked request
+public enum RequestStatus: String, Codable, Sendable {
+    case pending = "pending"
+    case completed = "completed"
+    case failed = "failed"
+    case cancelled = "cancelled"
+    case timeout = "timeout"
+}
