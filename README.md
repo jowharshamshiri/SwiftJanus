@@ -41,24 +41,88 @@ dependencies: [
 
 ## Usage
 
+### API Specification (Manifest)
+
+Before creating servers or clients, you need a Manifest file defining your API:
+
+**my-api-spec.json:**
+```json
+{
+  "name": "My Application API",
+  "version": "1.0.0",
+  "description": "Example API for demonstration",
+  "channels": {
+    "default": {
+      "commands": {
+        "get_user": {
+          "description": "Retrieve user information",
+          "arguments": {
+            "user_id": {
+              "type": "string",
+              "required": true,
+              "description": "User identifier"
+            }
+          },
+          "response": {
+            "type": "object",
+            "properties": {
+              "id": {"type": "string"},
+              "name": {"type": "string"},
+              "email": {"type": "string"}
+            }
+          }
+        },
+        "update_profile": {
+          "description": "Update user profile",
+          "arguments": {
+            "user_id": {"type": "string", "required": true},
+            "name": {"type": "string", "required": false},
+            "email": {"type": "string", "required": false}
+          },
+          "response": {
+            "type": "object",
+            "properties": {
+              "success": {"type": "boolean"},
+              "updated_fields": {"type": "array"}
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+**Note**: Built-in commands (`ping`, `echo`, `get_info`, `validate`, `slow_process`, `spec`) are always available and cannot be overridden in Manifests.
+
 ### Simple Client Example
 
 ```swift
 import SwiftJanus
 
-// Create client with automatic Manifest fetching
+// Create client - specification is fetched automatically from server
 let client = try await JanusClient(
-    socketPath: "/tmp/my_socket.sock",
-    channelId: "my_channel"
+    socketPath: "/tmp/my-server.sock",
+    channelId: "default"
 )
 
-// Send command - ID management is automatic
-let args: [String: AnyCodable] = [
-    "message": AnyCodable("Hello World")
+// Built-in commands (always available)
+let response = try await client.sendCommand("ping")
+if response.success {
+    print("Server ping: \(response.result?.value ?? "nil")")
+}
+
+// Custom command defined in Manifest (arguments validated automatically)
+let userArgs: [String: AnyCodable] = [
+    "user_id": AnyCodable("user123")
 ]
 
-let response = try await client.sendCommand("echo", args: args)
-print("Response: \(response)")
+let userResponse = try await client.sendCommand("get_user", args: userArgs)
+if userResponse.success {
+    print("User data: \(userResponse.result?.value ?? "nil")")
+} else {
+    print("Error: \(userResponse.error?.message ?? "Unknown error")")
+}
 ```
 
 ### Advanced Request Tracking
@@ -100,52 +164,124 @@ do {
 }
 ```
 
-### Server with Command Handlers
+### Server Usage
 
 ```swift
+import Foundation
 import SwiftJanus
 
-let client = try await JanusClient(
-    socketPath: "/tmp/my_socket.sock",
-    channelId: "my_channel"
-)
-
-// Register command handlers - returns direct values
-try client.registerCommandHandler("echo") { command in
-    guard let message = command.args?["message"]?.value as? String else {
-        throw JSONRPCError(
-            code: JSONRPCErrorCode.invalidParams,
-            message: "message parameter required"
-        )
+@available(macOS 10.14, iOS 12.0, *)
+@main
+struct ServerApp {
+    static func main() async throws {
+        // Load API specification from Manifest file
+        let server = try JanusServer.fromManifestFile("my-api-spec.json")
+        
+        // Register handlers for commands defined in the Manifest
+        server.registerHandler("get_user") { cmd in
+            guard let args = cmd.args,
+                  let userId = args["user_id"] as? String else {
+                return .failure(JSONRPCError(
+                    code: JSONRPCErrorCode.invalidParams,
+                    message: "Missing user_id argument"
+                ))
+            }
+            
+            // Simulate user lookup
+            return .success([
+                "id": userId,
+                "name": "John Doe",
+                "email": "john@example.com"
+            ])
+        }
+        
+        server.registerHandler("update_profile") { cmd in
+            guard let args = cmd.args,
+                  args["user_id"] != nil else {
+                return .failure(JSONRPCError(
+                    code: JSONRPCErrorCode.invalidParams,
+                    message: "Missing user_id argument"
+                ))
+            }
+            
+            var updatedFields: [String] = []
+            if args["name"] != nil { updatedFields.append("name") }
+            if args["email"] != nil { updatedFields.append("email") }
+            
+            return .success([
+                "success": true,
+                "updated_fields": updatedFields
+            ])
+        }
+        
+        // Handle graceful shutdown
+        let signalSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+        signalSource.setEventHandler {
+            print("Shutting down server...")
+            server.stop()
+            exit(0)
+        }
+        signalSource.resume()
+        signal(SIGINT, SIG_IGN)
+        
+        // Start listening (blocks until stopped)
+        try await server.startListening("/tmp/my-server.sock")
     }
-    
-    // Return direct value - no dictionary wrapping needed
-    return [
-        "echo": AnyCodable(message),
-        "timestamp": AnyCodable(command.timestamp)
-    ]
 }
+```
 
-// Register async handler
-try client.registerCommandHandler("processData") { command in
-    guard let data = command.args?["data"]?.value as? String else {
-        throw JSONRPCError(
-            code: JSONRPCErrorCode.invalidParams,
-            message: "data parameter required"
+### Client Usage
+
+```swift
+import Foundation
+import SwiftJanus
+
+@available(macOS 10.14, iOS 12.0, *)
+@main
+struct ClientApp {
+    static func main() async throws {
+        // Create client - specification is fetched automatically from server
+        let client = try await JanusClient(
+            socketPath: "/tmp/my-server.sock",
+            channelId: "default"
         )
+        
+        // Built-in commands (always available)
+        let response = try await client.sendCommand("ping")
+        if response.success {
+            print("Server ping: \(response.result?.value ?? "nil")")
+        }
+        
+        // Custom command defined in Manifest (arguments validated automatically)
+        let userArgs: [String: AnyCodable] = [
+            "user_id": AnyCodable("user123")
+        ]
+        
+        let userResponse = try await client.sendCommand("get_user", args: userArgs)
+        if userResponse.success {
+            print("User data: \(userResponse.result?.value ?? "nil")")
+        } else {
+            print("Error: \(userResponse.error?.message ?? "Unknown error")")
+        }
+        
+        // Fire-and-forget command
+        let logArgs: [String: AnyCodable] = [
+            "level": AnyCodable("info"),
+            "message": AnyCodable("User profile updated")
+        ]
+        
+        try await client.sendCommandNoResponse("log_event", args: logArgs)
+        
+        // Get server API specification
+        let specResponse = try await client.sendCommand("spec")
+        print("Server API spec: \(specResponse.result?.value ?? "nil")")
+        
+        // Test connectivity
+        if await client.ping() {
+            print("Server is responsive")
+        }
     }
-    
-    // Simulate async processing
-    try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-    
-    return [
-        "result": AnyCodable("Processed: \(data)"),
-        "processed_at": AnyCodable(Date().timeIntervalSince1970)
-    ]
 }
-
-print("Server listening on /tmp/my_socket.sock...")
-try await client.startListening()
 ```
 
 ### Fire-and-Forget Commands
@@ -227,28 +363,20 @@ do {
 }
 ```
 
-## Manifest Format
+### Fire-and-Forget Commands
 
-The Manifest defines available commands, their arguments, and input/output schemas:
+```swift
+// Send command without waiting for response
+let args: [String: AnyCodable] = [
+    "level": AnyCodable("info"),
+    "message": AnyCodable("User profile updated")
+]
 
-```json
-{
-  "version": "1.0",
-  "channels": {
-    "my-channel": {
-      "commands": {
-        "getData": {
-          "description": "Retrieve data",
-          "args": {
-            "id": {"type": "string", "required": true}
-          },
-          "response": {
-            "data": {"type": "object"}
-          }
-        }
-      }
-    }
-  }
+do {
+    try await client.sendCommandNoResponse("log_event", args: args)
+    print("Event logged successfully")
+} catch {
+    print("Failed to log event: \(error)")
 }
 ```
 
