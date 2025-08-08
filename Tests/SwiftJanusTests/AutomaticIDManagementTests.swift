@@ -7,13 +7,13 @@ final class AutomaticIDManagementTests: XCTestCase {
     func testRequestHandleCreation() {
         // Test F0194: Request ID Assignment and F0196: RequestHandle Structure
         let internalID = "test-uuid-12345"
-        let command = "test_command"
+        let request = "test_request"
         let channel = "test_channel"
         
-        let handle = RequestHandle(internalID: internalID, command: command, channel: channel)
+        let handle = RequestHandle(internalID: internalID, request: request, channel: channel)
         
         // Verify handle properties
-        XCTAssertEqual(handle.getCommand(), command)
+        XCTAssertEqual(handle.getRequest(), request)
         XCTAssertEqual(handle.getChannel(), channel)
         XCTAssertEqual(handle.getInternalID(), internalID)
         XCTAssertFalse(handle.isCancelled())
@@ -25,7 +25,7 @@ final class AutomaticIDManagementTests: XCTestCase {
     
     func testRequestHandleCancellation() {
         // Test F0204: Request Cancellation and F0212: Request Cleanup
-        let handle = RequestHandle(internalID: "test-id", command: "test_command", channel: "test_channel")
+        let handle = RequestHandle(internalID: "test-id", request: "test_request", channel: "test_channel")
         
         XCTAssertFalse(handle.isCancelled())
         
@@ -39,12 +39,11 @@ final class AutomaticIDManagementTests: XCTestCase {
         do {
             let client = try await JanusClient(
                 socketPath: "/tmp/test_socket",
-                channelId: "test_channel",
                 enableValidation: false
             )
             
             // Create a handle
-            let handle = RequestHandle(internalID: "test-id", command: "test_command", channel: "test_channel")
+            let handle = RequestHandle(internalID: "test-id", request: "test_request", channel: "test_channel")
             
             // Test initial status (should be completed since not in registry)
             var status = client.getRequestStatus(handle)
@@ -64,7 +63,6 @@ final class AutomaticIDManagementTests: XCTestCase {
         do {
             let client = try await JanusClient(
                 socketPath: "/tmp/test_socket",
-                channelId: "test_channel",
                 enableValidation: false
             )
             
@@ -85,15 +83,14 @@ final class AutomaticIDManagementTests: XCTestCase {
         do {
             let client = try await JanusClient(
                 socketPath: "/tmp/test_socket",
-                channelId: "test_channel",
                 enableValidation: false
             )
             
             // Create multiple handles to test bulk operations
             let handles = [
-                RequestHandle(internalID: "id1", command: "cmd1", channel: "test_channel"),
-                RequestHandle(internalID: "id2", command: "cmd2", channel: "test_channel"),
-                RequestHandle(internalID: "id3", command: "cmd3", channel: "test_channel")
+                RequestHandle(internalID: "id1", request: "cmd1", channel: "test_channel"),
+                RequestHandle(internalID: "id2", request: "cmd2", channel: "test_channel"),
+                RequestHandle(internalID: "id3", request: "cmd3", channel: "test_channel")
             ]
             
             // Test that handles start as completed (not in registry)
@@ -113,10 +110,10 @@ final class AutomaticIDManagementTests: XCTestCase {
     
     func testIDVisibilityControl() {
         // Test F0195: ID Visibility Control - UUIDs should be hidden from normal API
-        let handle = RequestHandle(internalID: "internal-uuid-12345", command: "test_command", channel: "test_channel")
+        let handle = RequestHandle(internalID: "internal-uuid-12345", request: "test_request", channel: "test_channel")
         
-        // User should only see command and channel, not internal UUID through normal API
-        XCTAssertEqual(handle.getCommand(), "test_command")
+        // User should only see request and channel, not internal UUID through normal API
+        XCTAssertEqual(handle.getRequest(), "test_request")
         XCTAssertEqual(handle.getChannel(), "test_channel")
         
         // Internal ID should only be accessible for internal operations
@@ -138,7 +135,6 @@ final class AutomaticIDManagementTests: XCTestCase {
         do {
             let client = try await JanusClient(
                 socketPath: "/tmp/test_socket",
-                channelId: "test_channel",
                 enableValidation: false
             )
             
@@ -146,7 +142,7 @@ final class AutomaticIDManagementTests: XCTestCase {
             let handles = (0..<10).map { i in
                 RequestHandle(
                     internalID: "concurrent-id-\(i)",
-                    command: "cmd\(i)",
+                    request: "cmd\(i)",
                     channel: "test_channel"
                 )
             }
@@ -174,7 +170,7 @@ final class AutomaticIDManagementTests: XCTestCase {
         for _ in 0..<1000 {
             let handle = RequestHandle(
                 internalID: UUID().uuidString,
-                command: "test_command",
+                request: "test_request",
                 channel: "test_channel"
             )
             

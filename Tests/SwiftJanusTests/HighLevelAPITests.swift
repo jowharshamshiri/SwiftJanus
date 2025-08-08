@@ -24,59 +24,55 @@ final class HighLevelAPITests: XCTestCase {
     
     func testJanusClientCreation() async throws {
         let client = try await JanusClient(
-            socketPath: testSocketPath,
-            channelId: "testChannel"
+            socketPath: testSocketPath
         )
         XCTAssertNotNil(client)
     }
     
-    func testJanusCommandValidation() async throws {
+    func testJanusRequestValidation() async throws {
         let client = try await JanusClient(
-            socketPath: testSocketPath,
-            channelId: "testChannel"
+            socketPath: testSocketPath
         )
         
-        // Valid command should pass validation
+        // Valid request should pass validation
         do {
-            _ = try await client.sendCommand("ping", args: ["message": AnyCodable("test")])
+            _ = try await client.sendRequest("ping", args: ["message": AnyCodable("test")])
         } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue || error.code == JSONRPCErrorCode.socketError.rawValue {
             // Expected - no server running or socket connection failed
         } catch {
-            XCTFail("Valid command should pass validation: \(error)")
+            XCTFail("Valid request should pass validation: \(error)")
         }
     }
     
-    func testDatagramInvalidCommand() async throws {
+    func testDatagramInvalidRequest() async throws {
         let client = try await JanusClient(
-            socketPath: testSocketPath,
-            channelId: "testChannel"
+            socketPath: testSocketPath
         )
         
-        // Invalid command should fail validation
+        // Invalid request should fail validation
         do {
-            _ = try await client.sendCommand("nonExistentCommand")
-            XCTFail("Expected unknown command error")
+            _ = try await client.sendRequest("nonExistentRequest")
+            XCTFail("Expected unknown request error")
         } catch let error as JSONRPCError {
             if error.code == JSONRPCErrorCode.methodNotFound.rawValue {
                 // Validated by error code - no need to check message text
                 // Expected
             } else if error.code == JSONRPCErrorCode.serverError.rawValue {
-                // Expected in SOCK_DGRAM - connection fails before command validation
+                // Expected in SOCK_DGRAM - connection fails before request validation
             } else {
-                XCTFail("Expected unknownCommand or connectionTestFailed error, got \(error)")
+                XCTFail("Expected unknownRequest or connectionTestFailed error, got \(error)")
             }
         }
     }
     
     func testDatagramArgumentValidation() async throws {
         let client = try await JanusClient(
-            socketPath: testSocketPath,
-            channelId: "testChannel"
+            socketPath: testSocketPath
         )
         
         // Missing required argument should fail
         do {
-            _ = try await client.sendCommand("echo") // Missing required 'data' arg
+            _ = try await client.sendRequest("echo") // Missing required 'data' arg
             XCTFail("Expected missing required argument error")
         } catch let error as JSONRPCError {
             if error.code == JSONRPCErrorCode.invalidParams.rawValue {
@@ -90,70 +86,68 @@ final class HighLevelAPITests: XCTestCase {
     }
     
     func testDatagramMessageSerialization() throws {
-        let command = JanusCommand(
+        let request = JanusRequest(
             channelId: "testChannel",
-            command: "ping",
+            request: "ping",
             args: ["message": AnyCodable("hello")]
         )
         
         // Test JSON serialization
         let encoder = JSONEncoder()
-        let data = try encoder.encode(command)
+        let data = try encoder.encode(request)
         
         let decoder = JSONDecoder()
-        let decoded = try decoder.decode(JanusCommand.self, from: data)
+        let decoded = try decoder.decode(JanusRequest.self, from: data)
         
         XCTAssertEqual(decoded.channelId, "testChannel")
-        XCTAssertEqual(decoded.command, "ping")
+        XCTAssertEqual(decoded.request, "ping")
         XCTAssertNotNil(decoded.args)
     }
     
     private func createHighLevelTestManifest() -> Manifest {
-        let messageArg = ArgumentSpec(
+        let messageArg = ArgumentManifest(
             type: .string,
             required: true,
             description: "Message to process"
         )
         
-        let dataArg = ArgumentSpec(
+        let dataArg = ArgumentManifest(
             type: .string,
             required: true,
             description: "Data to echo"
         )
         
-        let pingCommand = CommandSpec(
-            description: "Ping command",
+        let pingRequest = RequestManifest(
+            description: "Ping request",
             args: ["message": messageArg],
-            response: ResponseSpec(
+            response: ResponseManifest(
                 type: .object,
                 properties: [
-                    "pong": ArgumentSpec(type: .string)
+                    "pong": ArgumentManifest(type: .string)
                 ]
             )
         )
         
-        let echoCommand = CommandSpec(
-            description: "Echo command",
+        let echoRequest = RequestManifest(
+            description: "Echo request",
             args: ["data": dataArg],
-            response: ResponseSpec(
+            response: ResponseManifest(
                 type: .object,
                 properties: [
-                    "echo": ArgumentSpec(type: .string)
+                    "echo": ArgumentManifest(type: .string)
                 ]
             )
-        )
-        
-        let channelSpec = ChannelSpec(
-            description: "High-level test channel",
-            commands: [
-                "ping": pingCommand,
-                "echo": echoCommand
-            ]
         )
         
         return Manifest(
             version: "1.0.0",
-            channels: ["testChannel": channelSpec]
+            models: ["testModel": ModelManifest(
+                type: .object,
+                properties: [
+                    "id": ArgumentManifest(type: .string, required: true),
+                    "data": ArgumentManifest(type: .string)
+                ]
+            )]
         )
     }
 }

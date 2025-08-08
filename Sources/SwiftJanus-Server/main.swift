@@ -10,7 +10,7 @@ struct SwiftJanusServer {
         // Parse command line arguments
         let arguments = CommandLine.arguments
         var socketPath = "/tmp/swift_test_server.sock"
-        var specPath = "test-manifest.json"
+        var manifestPath = "test-manifest.json"
         
         print("Arguments: \(arguments)")
         
@@ -27,13 +27,13 @@ struct SwiftJanusServer {
             } else if argument == "--socket-path" && i + 1 < arguments.count {
                 socketPath = arguments[i + 1]
                 i += 1
-            } else if argument.hasPrefix("--spec=") {
+            } else if argument.hasPrefix("--manifest=") {
                 let parts = argument.split(separator: "=", maxSplits: 1)
                 if parts.count == 2 {
-                    specPath = String(parts[1])
+                    manifestPath = String(parts[1])
                 }
-            } else if argument == "--spec" && i + 1 < arguments.count {
-                specPath = arguments[i + 1]
+            } else if argument == "--manifest" && i + 1 < arguments.count {
+                manifestPath = arguments[i + 1]
                 i += 1
             }
             
@@ -41,34 +41,34 @@ struct SwiftJanusServer {
         }
         
         print("Starting Swift Janus Server on: \(socketPath)")
-        print("Loading spec from: \(specPath)")
+        print("Loading manifest from: \(manifestPath)")
         fflush(stdout)
         
         // Remove existing socket file
         try? FileManager.default.removeItem(atPath: socketPath)
         
-        // Check spec file exists
-        guard FileManager.default.fileExists(atPath: specPath) else {
-            print("ERROR: Spec file not found at: \(specPath)")
+        // Check manifest file exists
+        guard FileManager.default.fileExists(atPath: manifestPath) else {
+            print("ERROR: Manifest file not found at: \(manifestPath)")
             exit(1)
         }
         
         do {
             // Load Manifest using the library
             let parser = ManifestParser()
-            let specData = try Data(contentsOf: URL(fileURLWithPath: specPath))
-            let manifest = try parser.parseJSON(specData)
+            let manifestData = try Data(contentsOf: URL(fileURLWithPath: manifestPath))
+            let manifest = try parser.parseJSON(manifestData)
             
             print("Manifest loaded successfully")
-            print("Channels: \(manifest.channels.keys.joined(separator: ", "))")
+            print("Models: \(manifest.models?.count ?? 0)")
             fflush(stdout)
             
             // Create SOCK_DGRAM server using high-level API
             let server = JanusServer()
             
-            // Register command handlers (defaults already included, these override them)
-            server.registerHandler("ping") { command in
-                print("Custom ping handler: \(command.id)")
+            // Register request handlers (defaults already included, these override them)
+            server.registerHandler("ping") { request in
+                print("Custom ping handler: \(request.id)")
                 return .success([
                     "pong": AnyCodable(true),
                     "timestamp": AnyCodable(ISO8601DateFormatter().string(from: Date())),
@@ -76,8 +76,8 @@ struct SwiftJanusServer {
                 ])
             }
             
-            server.registerHandler("get_info") { command in
-                print("Custom get_info handler: \(command.id)")
+            server.registerHandler("get_info") { request in
+                print("Custom get_info handler: \(request.id)")
                 return .success([
                     "server": AnyCodable("Swift Janus"),
                     "version": AnyCodable("1.0.0"),
@@ -86,7 +86,7 @@ struct SwiftJanusServer {
                 ])
             }
             
-            print("Command handlers registered")
+            print("Request handlers registered")
             print("Swift server listening on \(socketPath). Press Ctrl+C to stop.")
             fflush(stdout)
             

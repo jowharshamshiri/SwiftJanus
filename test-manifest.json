@@ -5,10 +5,10 @@
         "test": {
             "name": "test",
             "description": "Test channel for cross-platform communication",
-            "commands": {
+            "requests": {
                 "ping": {
                     "name": "ping",
-                    "description": "Simple ping command",
+                    "description": "Simple ping request",
                     "args": {},
                     "response": {
                         "type": "object",

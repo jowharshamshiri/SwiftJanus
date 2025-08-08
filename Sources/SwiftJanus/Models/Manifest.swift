@@ -30,43 +30,30 @@ public final class Box<T>: Codable, Sendable where T: Codable & Sendable {
 public struct Manifest: Codable, Sendable {
     public let version: String
     public let name: String?
-    public let channels: [String: ChannelSpec]
-    public let models: [String: ModelSpec]?
+    public let models: [String: ModelManifest]?
     
-    public init(version: String, name: String? = nil, channels: [String: ChannelSpec], models: [String: ModelSpec]? = nil) {
+    public init(version: String, name: String? = nil, models: [String: ModelManifest]? = nil) {
         self.version = version
         self.name = name
-        self.channels = channels
         self.models = models
     }
 }
 
-/// Specification for a communication channel
-public struct ChannelSpec: Codable, Sendable {
-    public let name: String?
-    public let description: String?
-    public let commands: [String: CommandSpec]
-    
-    public init(name: String? = nil, description: String? = nil, commands: [String: CommandSpec]) {
-        self.name = name
-        self.description = description
-        self.commands = commands
-    }
-}
+// ChannelManifest REMOVED - Channels are completely removed from protocol
 
-/// Specification for a command within a channel
-public struct CommandSpec: Codable, Sendable {
+/// Manifest for a request within a channel
+public struct RequestManifest: Codable, Sendable {
     public let name: String?
     public let description: String?
-    public let args: [String: ArgumentSpec]?
-    public let response: ResponseSpec?
+    public let args: [String: ArgumentManifest]?
+    public let response: ResponseManifest?
     public let errorCodes: [String]?
     
     public init(
         name: String? = nil,
         description: String? = nil,
-        args: [String: ArgumentSpec]? = nil,
-        response: ResponseSpec? = nil,
+        args: [String: ArgumentManifest]? = nil,
+        response: ResponseManifest? = nil,
         errorCodes: [String]? = nil
     ) {
         self.name = name
@@ -77,14 +64,14 @@ public struct CommandSpec: Codable, Sendable {
     }
 }
 
-/// Specification for command arguments  
-public struct ArgumentSpec: Codable, Sendable {
+/// Manifest for request arguments  
+public struct ArgumentManifest: Codable, Sendable {
     public let type: ArgumentType
     private let _required: Bool?
     public let description: String?
     public let defaultValue: AnyCodable?
-    public let validation: ValidationSpec?
-    public let items: Box<ArgumentSpec>?  // For array types - matches Go implementation
+    public let validation: ValidationManifest?
+    public let items: Box<ArgumentManifest>?  // For array types - matches Go implementation
     
     // Computed property that defaults to false like Go
     public var required: Bool {
@@ -105,8 +92,8 @@ public struct ArgumentSpec: Codable, Sendable {
         required: Bool = false,
         description: String? = nil,
         defaultValue: AnyCodable? = nil,
-        validation: ValidationSpec? = nil,
-        items: ArgumentSpec? = nil
+        validation: ValidationManifest? = nil,
+        items: ArgumentManifest? = nil
     ) {
         self.type = type
         self._required = required
@@ -117,18 +104,18 @@ public struct ArgumentSpec: Codable, Sendable {
     }
 }
 
-/// Specification for command responses
-public struct ResponseSpec: Codable, Sendable {
+/// Manifest for request responses
+public struct ResponseManifest: Codable, Sendable {
     public let type: ArgumentType?
-    public let properties: [String: ArgumentSpec]?
+    public let properties: [String: ArgumentManifest]?
     public let description: String?
-    public let items: Box<ArgumentSpec>?  // For array response types - matches Go implementation
+    public let items: Box<ArgumentManifest>?  // For array response types - matches Go implementation
     
     public init(
         type: ArgumentType? = nil,
-        properties: [String: ArgumentSpec]? = nil,
+        properties: [String: ArgumentManifest]? = nil,
         description: String? = nil,
-        items: ArgumentSpec? = nil
+        items: ArgumentManifest? = nil
     ) {
         self.type = type
         self.properties = properties
@@ -137,8 +124,8 @@ public struct ResponseSpec: Codable, Sendable {
     }
 }
 
-/// Specification for error responses
-public struct ErrorSpec: Codable, Sendable {
+/// Manifest for error responses
+public struct ErrorManifest: Codable, Sendable {
     public let code: Int
     public let message: String
     public let description: String?
@@ -151,7 +138,7 @@ public struct ErrorSpec: Codable, Sendable {
 }
 
 /// Validation constraints for arguments
-public struct ValidationSpec: Codable, Sendable {
+public struct ValidationManifest: Codable, Sendable {
     public let minLength: Int?
     public let maxLength: Int?
     public let pattern: String?
@@ -176,16 +163,16 @@ public struct ValidationSpec: Codable, Sendable {
     }
 }
 
-/// Data model specification for complex types
-public struct ModelSpec: Codable, Sendable {
+/// Data model manifest for complex types
+public struct ModelManifest: Codable, Sendable {
     public let type: ArgumentType
-    public let properties: [String: ArgumentSpec]
+    public let properties: [String: ArgumentManifest]
     public let required: [String]?
     public let description: String?
     
     public init(
         type: ArgumentType,
-        properties: [String: ArgumentSpec],
+        properties: [String: ArgumentManifest],
         required: [String]? = nil,
         description: String? = nil
     ) {

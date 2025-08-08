@@ -50,22 +50,21 @@ final class PerformanceTest: XCTestCase {
         // Create client
         let client = try await JanusClient(
             socketPath: socketPath,
-            channelId: "perf",
             enableValidation: false
         )
         print("✅ Client created")
         
-        // Performance test: Multiple rapid echo commands
+        // Performance test: Multiple rapid echo requests
         let testCount = 20
         var successCount = 0
         var failCount = 0
         let startTime = Date()
         
-        print("📤 Sending \(testCount) rapid echo commands...")
+        print("📤 Sending \(testCount) rapid echo requests...")
         
         for i in 0..<testCount {
             do {
-                let response = try await client.sendCommand(
+                let response = try await client.sendRequest(
                     "echo",
                     args: ["message": AnyCodable("Test message \(i)")],
                     timeout: 5.0
@@ -82,11 +81,11 @@ final class PerformanceTest: XCTestCase {
                         failCount += 1
                     }
                 } else {
-                    print("⚠️ Command \(i) failed")
+                    print("⚠️ Request \(i) failed")
                     failCount += 1
                 }
             } catch {
-                print("❌ Command \(i) error: \(error)")
+                print("❌ Request \(i) error: \(error)")
                 failCount += 1
             }
         }
@@ -96,25 +95,25 @@ final class PerformanceTest: XCTestCase {
         let successRate = Double(successCount) / Double(testCount) * 100.0
         
         print("📊 Performance Results:")
-        print("  Total commands: \(testCount)")
+        print("  Total requests: \(testCount)")
         print("  Successful: \(successCount)")
         print("  Failed: \(failCount)")
         print("  Success rate: \(String(format: "%.1f", successRate))%")
         print("  Duration: \(String(format: "%.3f", duration))s")
-        print("  Commands/second: \(String(format: "%.1f", Double(testCount) / duration))")
+        print("  Requests/second: \(String(format: "%.1f", Double(testCount) / duration))")
         
-        // Test different command types
-        print("📤 Testing different command types...")
+        // Test different request types
+        print("📤 Testing different request types...")
         
         // Test ping
-        let pingResponse = try await client.sendCommand("ping", timeout: 3.0)
+        let pingResponse = try await client.sendRequest("ping", timeout: 3.0)
         XCTAssertTrue(pingResponse.success, "Ping should succeed")
         if let resultDict = pingResponse.result?.value as? [String: Any] {
             XCTAssertNotNil(resultDict["pong"], "Ping response should contain pong")
         }
         
         // Test get_info
-        let infoResponse = try await client.sendCommand("get_info", timeout: 3.0)
+        let infoResponse = try await client.sendRequest("get_info", timeout: 3.0)
         XCTAssertTrue(infoResponse.success, "get_info should succeed")
         if let resultDict = infoResponse.result?.value as? [String: Any] {
             XCTAssertNotNil(resultDict["server"], "Info response should contain server")
@@ -162,7 +161,6 @@ final class PerformanceTest: XCTestCase {
         
         let client = try await JanusClient(
             socketPath: socketPath,
-            channelId: "test",
             enableValidation: false
         )
         
@@ -177,7 +175,7 @@ final class PerformanceTest: XCTestCase {
             let largeMessage = String(repeating: "A", count: size)
             
             do {
-                let response = try await client.sendCommand(
+                let response = try await client.sendRequest(
                     "echo",
                     args: ["message": AnyCodable(largeMessage)],
                     timeout: 5.0
@@ -201,7 +199,7 @@ final class PerformanceTest: XCTestCase {
         // Test oversized payload that should fail due to socket limits
         let oversizedMessage = String(repeating: "A", count: oversizedPayloadSize)
         do {
-            _ = try await client.sendCommand(
+            _ = try await client.sendRequest(
                 "echo",
                 args: ["message": AnyCodable(oversizedMessage)],
                 timeout: 5.0

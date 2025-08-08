@@ -3,7 +3,7 @@
   "channels": {
     "library-management": {
       "description": "PDF library management operations",
-      "commands": {
+      "requests": {
         "createWorkspace": {
           "description": "Create a new workspace",
           "args": {
@@ -159,7 +159,7 @@
           "errorCodes": {
             "fileNotFound": {
               "code": 400,
-              "message": "PDF file not found at specified path"
+              "message": "PDF file not found at manifestified path"
             },
             "workspaceNotFound": {
               "code": 404,
@@ -186,7 +186,7 @@
             "workspaceId": {
               "type": "string",
               "required": false,
-              "description": "Limit search to specific workspace"
+              "description": "Limit search to manifestific workspace"
             },
             "searchType": {
               "type": "string",
@@ -243,7 +243,7 @@
     },
     "task-management": {
       "description": "Background task management operations",
-      "commands": {
+      "requests": {
         "getTasks": {
           "description": "Get all background tasks",
           "args": {
@@ -299,7 +299,7 @@
     },
     "llm-operations": {
       "description": "Local LLM-powered document analysis",
-      "commands": {
+      "requests": {
         "analyzeDocument": {
           "description": "Analyze document content using LLM",
           "args": {

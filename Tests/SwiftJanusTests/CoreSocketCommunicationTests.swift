@@ -161,15 +161,15 @@ final class CoreSocketCommunicationTests: XCTestCase {
         }
         XCTAssertEqual(responseBindResult, 0, "Failed to bind response socket")
         
-        // Create command with reply_to field
-        let command = JanusCommand(
+        // Create request with reply_to field
+        let request = JanusRequest(
             channelId: "test-channel",
-            command: "test-command",
+            request: "test-request",
             replyTo: responseSocketPath,
             args: ["test_param": AnyCodable("test_value")]
         )
         
-        let jsonData = try JSONEncoder().encode(command)
+        let jsonData = try JSONEncoder().encode(request)
         
         // Send to server socket
         let clientFd = socket(AF_UNIX, SOCK_DGRAM, 0)
@@ -192,11 +192,11 @@ final class CoreSocketCommunicationTests: XCTestCase {
         XCTAssertGreaterThan(receiveResult, 0, "Failed to receive datagram")
         
         let receivedData = Data(buffer[0..<receiveResult])
-        let receivedCommand = try JSONDecoder().decode(JanusCommand.self, from: receivedData)
+        let receivedRequest = try JSONDecoder().decode(JanusRequest.self, from: receivedData)
         
-        XCTAssertEqual(receivedCommand.channelId, "test-channel", "Channel ID mismatch")
-        XCTAssertEqual(receivedCommand.command, "test-command", "Command mismatch")
-        XCTAssertEqual(receivedCommand.replyTo, responseSocketPath, "Reply-to mismatch")
+        XCTAssertEqual(receivedRequest.channelId, "test-channel", "Channel ID mismatch")
+        XCTAssertEqual(receivedRequest.request, "test-request", "Request mismatch")
+        XCTAssertEqual(receivedRequest.replyTo, responseSocketPath, "Reply-to mismatch")
     }
     
     func testFireAndForgetSend() throws {
@@ -215,15 +215,15 @@ final class CoreSocketCommunicationTests: XCTestCase {
         }
         XCTAssertEqual(bindResult, 0, "Failed to bind server socket")
         
-        // Create fire-and-forget command (no reply_to field)
-        let command = JanusCommand(
+        // Create fire-and-forget request (no reply_to field)
+        let request = JanusRequest(
             channelId: "test-channel", 
-            command: "fire-and-forget",
+            request: "fire-and-forget",
             replyTo: nil,
             args: ["message": AnyCodable("no response needed")]
         )
         
-        let jsonData = try JSONEncoder().encode(command)
+        let jsonData = try JSONEncoder().encode(request)
         
         // Send using fire-and-forget pattern
         let clientFd = socket(AF_UNIX, SOCK_DGRAM, 0)
@@ -246,10 +246,10 @@ final class CoreSocketCommunicationTests: XCTestCase {
         XCTAssertGreaterThan(receiveResult, 0, "Failed to receive fire-and-forget datagram")
         
         let receivedData = Data(buffer[0..<receiveResult])
-        let receivedCommand = try JSONDecoder().decode(JanusCommand.self, from: receivedData)
+        let receivedRequest = try JSONDecoder().decode(JanusRequest.self, from: receivedData)
         
-        XCTAssertNil(receivedCommand.replyTo, "Fire-and-forget command should have nil replyTo")
-        XCTAssertEqual(receivedCommand.command, "fire-and-forget", "Command mismatch")
+        XCTAssertNil(receivedRequest.replyTo, "Fire-and-forget request should have nil replyTo")
+        XCTAssertEqual(receivedRequest.request, "fire-and-forget", "Request mismatch")
     }
     
     func testDynamicMessageSizeDetection() throws {
@@ -273,7 +273,7 @@ final class CoreSocketCommunicationTests: XCTestCase {
         var maxSuccessfulSize = 0
         
         for size in testSizes {
-            // Create test message of specific size
+            // Create test message of manifestific size
             let testData = Data(repeating: 65, count: size) // 'A' repeated
             
             // Try to send message to itself
@@ -379,7 +379,7 @@ final class CoreSocketCommunicationTests: XCTestCase {
         
         // Test connection to non-existent server (should fail)
         do {
-            let client = try await JanusClient(socketPath: serverSocketPath, channelId: "test-channel")
+            let client = try await JanusClient(socketPath: serverSocketPath)
             try await client.testConnection()
             XCTFail("Expected connection test to fail for non-existent server")
         } catch {
@@ -430,7 +430,7 @@ final class CoreSocketCommunicationTests: XCTestCase {
         
         // Test connection to running server (should succeed)
         do {
-            let client = try await JanusClient(socketPath: serverSocketPath, channelId: "test-channel")
+            let client = try await JanusClient(socketPath: serverSocketPath)
             try await client.testConnection()
         } catch {
             XCTFail("Expected connection test to succeed for running server: \(error)")

@@ -97,7 +97,7 @@ final class AnyCodableDebugTest: XCTestCase {
         ]
         
         let response = JanusResponse(
-            commandId: "test-id",
+            requestId: "test-id",
             channelId: "test",
             success: true,
             result: AnyCodable(echoResult),

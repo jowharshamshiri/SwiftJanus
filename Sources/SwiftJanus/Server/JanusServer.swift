@@ -1,8 +1,8 @@
 import Foundation
 
-/// Command handler function type for SOCK_DGRAM server
+/// Request handler function type for SOCK_DGRAM server
 /// Updated to support direct value responses (not just dictionaries) for protocol compliance
-public typealias JanusCommandHandler = (JanusCommand) -> Result<AnyCodable, JSONRPCError>
+public typealias JanusRequestHandler = (JanusRequest) -> Result<AnyCodable, JSONRPCError>
 
 /// Event handler function type for server events
 public typealias ServerEventHandler = (Any) -> Void
@@ -35,7 +35,7 @@ public class ServerEventEmitter {
     private var listeningHandlers: [ServerEventHandler] = []
     private var connectionHandlers: [ServerEventHandler] = []
     private var disconnectionHandlers: [ServerEventHandler] = []
-    private var commandHandlers: [ServerEventHandler] = []
+    private var requestHandlers: [ServerEventHandler] = []
     private var responseHandlers: [ServerEventHandler] = []
     private var errorHandlers: [ServerEventHandler] = []
     private let queue = DispatchQueue(label: "server.events", attributes: .concurrent)
@@ -46,7 +46,7 @@ public class ServerEventEmitter {
             case "listening": self.listeningHandlers.append(handler)
             case "connection": self.connectionHandlers.append(handler)
             case "disconnection": self.disconnectionHandlers.append(handler)
-            case "command": self.commandHandlers.append(handler)
+            case "request": self.requestHandlers.append(handler)
             case "response": self.responseHandlers.append(handler)
             case "error": self.errorHandlers.append(handler)
             default: break
@@ -61,7 +61,7 @@ public class ServerEventEmitter {
             case "listening": handlers = self.listeningHandlers
             case "connection": handlers = self.connectionHandlers
             case "disconnection": handlers = self.disconnectionHandlers
-            case "command": handlers = self.commandHandlers
+            case "request": handlers = self.requestHandlers
             case "response": handlers = self.responseHandlers
             case "error": handlers = self.errorHandlers
             default: return
@@ -75,15 +75,15 @@ public class ServerEventEmitter {
 }
 
 /// Server state for tracking clients and activity
-/// Note: For SOCK_DGRAM, each command creates an ephemeral client socket, 
-/// so "clients" represent individual command socket addresses, not persistent connections
+/// Note: For SOCK_DGRAM, each request creates an ephemeral client socket, 
+/// so "clients" represent individual request socket addresses, not persistent connections
 // ServerState removed - SOCK_DGRAM is stateless, no client tracking needed
 // This matches Go/Rust server implementations that don't track ephemeral datagram clients
 
 /// High-level SOCK_DGRAM Unix socket server
 /// Extracted from SwiftJanusDgram main binary and made reusable
 public class JanusServer {
-    private var handlers: [String: JanusCommandHandler] = [:]
+    private var handlers: [String: JanusRequestHandler] = [:]
     private var isRunning = false
     private let manifest: Manifest?
     private let config: ServerConfig
@@ -94,7 +94,7 @@ public class JanusServer {
     public init(manifest: Manifest? = nil, config: ServerConfig = ServerConfig()) {
         self.manifest = manifest
         self.config = config
-        // Register default commands that match other implementations
+        // Register default requests that match other implementations
         registerDefaultHandlers()
     }
     
@@ -113,12 +113,12 @@ public class JanusServer {
         ]
     }
     
-    /// Register a command handler
-    public func registerHandler(_ command: String, handler: @escaping JanusCommandHandler) {
-        handlers[command] = handler
+    /// Register a request handler
+    public func registerHandler(_ request: String, handler: @escaping JanusRequestHandler) {
+        handlers[request] = handler
     }
     
-    /// Start listening on the specified socket path using SOCK_DGRAM
+    /// Start listening on the manifestified socket path using SOCK_DGRAM
     public func startListening(_ socketPath: String) async throws {
         isRunning = true
         
@@ -278,52 +278,50 @@ public class JanusServer {
     
     private func processReceivedDatagram(_ data: Data, senderAddress: String) async {
         // Simple JSON parsing like Go server - no complex error handling
-        guard let cmd = try? JSONDecoder().decode(JanusCommand.self, from: data) else {
-            debugLog("Failed to decode JanusCommand from \(senderAddress)")
+        guard let cmd = try? JSONDecoder().decode(JanusRequest.self, from: data) else {
+            debugLog("Failed to decode JanusRequest from \(senderAddress)")
             return
         }
         
-        debugLog("Received command: \(cmd.command) (ID: \(cmd.id))")
+        debugLog("Received request: \(cmd.request) (ID: \(cmd.id))")
         
-        // Emit command event
-        eventEmitter.emit("command", data: cmd)
+        // Emit request event
+        eventEmitter.emit("request", data: cmd)
         
-        // Send response via reply_to if specified
+        // Send response via reply_to if manifestified
         if let replyTo = cmd.replyTo {
-            await sendResponse(cmd.id, cmd.channelId, cmd.command, cmd.args, replyTo)
+            await sendResponse(cmd.id, "default", cmd.request, cmd.args, replyTo)
             
             // Emit response event  
-            eventEmitter.emit("response", data: ["commandId": cmd.id, "replyTo": replyTo])
+            eventEmitter.emit("response", data: ["requestId": cmd.id, "replyTo": replyTo])
         }
     }
     
     // Removed complex malformed JSON error response - keep it simple like Go server
     
-    private func sendResponse(_ commandId: String, _ channelId: String, _ command: String, _ args: [String: AnyCodable]?, _ replyTo: String) async {
-        debugLog("sendResponse called for command '\(command)' ID '\(commandId)'")
+    private func sendResponse(_ requestId: String, _ channelId: String, _ request: String, _ args: [String: AnyCodable]?, _ replyTo: String) async {
+        debugLog("sendResponse called for request '\(request)' ID '\(requestId)'")
         var success = true
         var result: AnyCodable? = nil
         var responseError: JSONRPCError? = nil
         
-        // Execute command with timeout management
-        let commandTask = Task {
+        // Execute request with timeout management
+        let requestTask = Task {
             // Check if we have a custom handler
-            debugLog("Looking for handler for command '\(command)'")
+            debugLog("Looking for handler for request '\(request)'")
             debugLog("Available handlers: \(Array(self.handlers.keys))")
-            if let handler = handlers[command] {
-                debugLog("Found custom handler for '\(command)'")
-                let janusCommand = JanusCommand(
-                    id: commandId,
-                    channelId: channelId,
-                    command: command,
+            if let handler = handlers[request] {
+                debugLog("Found custom handler for '\(request)'")
+                let janusRequest = JanusRequest(
+                    id: requestId,
+                    request: request,
                     replyTo: replyTo,
                     args: args,
-                    timeout: nil,
-                    timestamp: Date().timeIntervalSince1970
+                    timeout: nil
                 )
                 
-                debugLog("Executing custom handler for '\(command)'")
-                let handlerResult = handler(janusCommand)
+                debugLog("Executing custom handler for '\(request)'")
+                let handlerResult = handler(janusRequest)
                 debugLog("Handler result received")
                 switch handlerResult {
                 case .success(let data):
@@ -335,8 +333,8 @@ public class JanusServer {
                 }
             } else {
                 // Use default handlers (extracted from main binary)
-                debugLog("Using default handler for '\(command)'")
-                switch command {
+                debugLog("Using default handler for '\(request)'")
+                switch request {
                 case "server_stats":
                     let stats = self.getServerStats()
                     // Direct stats return - already AnyCodable
@@ -398,7 +396,7 @@ public class JanusServer {
                     }
                     return (true, AnyCodable(slowResult), nil as JSONRPCError?)
                 default:
-                    let error = JSONRPCError.create(code: .methodNotFound, details: "Unknown command: \(command)")
+                    let error = JSONRPCError.create(code: .methodNotFound, details: "Unknown request: \(request)")
                     return (false, AnyCodable(""), error)
                 }
             }
@@ -406,19 +404,19 @@ public class JanusServer {
         
         // Execute with simple timeout - no TaskGroup complexity
         do {
-            debugLog("Starting command execution with timeout")
+            debugLog("Starting request execution with timeout")
             
             // Simple async timeout using withThrowingTaskGroup for clean timeout handling
-            let (commandSuccess, commandResult, taskError): (Bool, AnyCodable, JSONRPCError?) = try await withThrowingTaskGroup(of: (Bool, AnyCodable, JSONRPCError?).self) { group in
-                // Add command execution task
+            let (requestSuccess, requestResult, taskError): (Bool, AnyCodable, JSONRPCError?) = try await withThrowingTaskGroup(of: (Bool, AnyCodable, JSONRPCError?).self) { group in
+                // Add request execution task
                 group.addTask { [self] in
                     do {
-                        let result = try await commandTask.value
-                        self.debugLog("Command completed successfully")
+                        let result = try await requestTask.value
+                        self.debugLog("Request completed successfully")
                         return result
                     } catch {
-                        self.debugLog("Command failed: \(error)")
-                        let taskError = JSONRPCError.create(code: .internalError, details: "Command execution failed: \(error.localizedDescription)")
+                        self.debugLog("Request failed: \(error)")
+                        let taskError = JSONRPCError.create(code: .internalError, details: "Request execution failed: \(error.localizedDescription)")
                         return (false, AnyCodable(""), taskError)
                     }
                 }
@@ -426,8 +424,8 @@ public class JanusServer {
                 // Add timeout task
                 group.addTask { [self] in
                     try await Task.sleep(nanoseconds: UInt64(self.config.defaultTimeout * 1_000_000_000))
-                    self.debugLog("Command timeout after \(self.config.defaultTimeout) seconds")
-                    let timeoutError = JSONRPCError.create(code: .internalError, details: "Command timeout after \(self.config.defaultTimeout) seconds")
+                    self.debugLog("Request timeout after \(self.config.defaultTimeout) seconds")
+                    let timeoutError = JSONRPCError.create(code: .internalError, details: "Request timeout after \(self.config.defaultTimeout) seconds")
                     return (false, AnyCodable(""), timeoutError)
                 }
                 
@@ -441,43 +439,41 @@ public class JanusServer {
                 return result
             }
             
-            success = commandSuccess
-            result = success ? commandResult : nil
+            success = requestSuccess
+            result = success ? requestResult : nil
             responseError = taskError
-            debugLog("Command execution completed - success: \(success)")
+            debugLog("Request execution completed - success: \(success)")
             
         } catch {
             // Handle task group errors
             debugLog("Task group failed: \(error)")
             success = false
             result = nil
-            responseError = JSONRPCError.create(code: .internalError, details: "Command execution failed: \(error.localizedDescription)")
+            responseError = JSONRPCError.create(code: .internalError, details: "Request execution failed: \(error.localizedDescription)")
         }
         
         // Validate response against Manifest if available
         if let manifest = self.manifest, let result = result {
-            let validator = ResponseValidator(specification: manifest)
+            let validator = ResponseValidator(manifest: manifest)
             // Convert AnyCodable result to [String: Any] for validation
             if let resultDict = result.value as? [String: Any] {
-                let validationResult = validator.validateCommandResponse(
+                let validationResult = validator.validateRequestResponse(
                     resultDict,
-                    channelId: channelId,
-                    commandName: command
+                    channelId: "default",
+                    requestName: request
                 )
                 if !validationResult.valid {
                     // Log validation errors but don't fail the response
-                    debugLog("Response validation failed for \(command): \(validationResult.errors.map { $0.localizedDescription }.joined(separator: ", "))")
+                    debugLog("Response validation failed for \(request): \(validationResult.errors.map { $0.localizedDescription }.joined(separator: ", "))")
                 }
             }
         }
         
         let response = JanusResponse(
-            commandId: commandId,
-            channelId: channelId,
+            requestId: requestId,
             success: success,
             result: result,
-            error: success ? nil : responseError,
-            timestamp: Date().timeIntervalSince1970
+            error: success ? nil : responseError
         )
         
         // Emit response event
@@ -599,7 +595,92 @@ public class JanusServer {
     }
     
     private func registerDefaultHandlers() {
-        // Default handlers match the main binary implementation
-        // These can be overridden by calling registerHandler
+        // Built-in request handlers matching other implementations
+        
+        // Ping request - basic connectivity test
+        self.registerHandler("ping") { request in
+            var result: [String: AnyCodable] = [:]
+            result["message"] = AnyCodable("pong")
+            result["timestamp"] = AnyCodable(Date().timeIntervalSince1970)
+            return .success(AnyCodable(result))
+        }
+        
+        // Echo request - echo back the message parameter
+        self.registerHandler("echo") { request in
+            let message = request.args?["message"] ?? AnyCodable("No message provided")
+            var result: [String: AnyCodable] = [:]
+            result["echo"] = message
+            result["timestamp"] = AnyCodable(Date().timeIntervalSince1970)
+            return .success(AnyCodable(result))
+        }
+        
+        // Get info request - implementation information
+        self.registerHandler("get_info") { request in
+            var result: [String: AnyCodable] = [:]
+            result["server"] = AnyCodable("Swift Janus")
+            result["version"] = AnyCodable("1.0.0")
+            result["timestamp"] = AnyCodable(Date().timeIntervalSince1970)
+            return .success(AnyCodable(result))
+        }
+        
+        // Validate request - JSON validation service
+        self.registerHandler("validate") { request in
+            guard let message = request.args?["message"] else {
+                var result: [String: AnyCodable] = [:]
+                result["valid"] = AnyCodable(false)
+                result["error"] = AnyCodable("No message provided for validation")
+                result["timestamp"] = AnyCodable(Date().timeIntervalSince1970)
+                return .success(AnyCodable(result))
+            }
+            
+            do {
+                // Try to parse the message as JSON
+                if let messageString = message.value as? String {
+                    let jsonData = messageString.data(using: .utf8) ?? Data()
+                    _ = try JSONSerialization.jsonObject(with: jsonData, options: [])
+                    var result: [String: AnyCodable] = [:]
+                    result["valid"] = AnyCodable(true)
+                    result["message"] = AnyCodable("JSON is valid")
+                    result["timestamp"] = AnyCodable(Date().timeIntervalSince1970)
+                    return .success(AnyCodable(result))
+                } else {
+                    var result: [String: AnyCodable] = [:]
+                    result["valid"] = AnyCodable(false)
+                    result["error"] = AnyCodable("Invalid JSON: \(message.value)")
+                    result["timestamp"] = AnyCodable(Date().timeIntervalSince1970)
+                    return .success(AnyCodable(result))
+                }
+            } catch {
+                var result: [String: AnyCodable] = [:]
+                result["valid"] = AnyCodable(false)
+                result["error"] = AnyCodable("Invalid JSON: \(error.localizedDescription)")
+                result["timestamp"] = AnyCodable(Date().timeIntervalSince1970)
+                return .success(AnyCodable(result))
+            }
+        }
+        
+        // Slow process request - 2-second delay simulation
+        self.registerHandler("slow_process") { request in
+            Thread.sleep(forTimeInterval: 2.0)
+            let message = request.args?["message"] ?? AnyCodable("No message")
+            var result: [String: AnyCodable] = [:]
+            result["processed"] = AnyCodable(true)
+            result["delay"] = AnyCodable("2000ms")
+            result["message"] = message
+            result["timestamp"] = AnyCodable(Date().timeIntervalSince1970)
+            return .success(AnyCodable(result))
+        }
+        
+        // Manifest request - return server manifest
+        self.registerHandler("manifest") { request in
+            // Generate and return the server manifest directly
+            var result: [String: AnyCodable] = [:]
+            result["version"] = AnyCodable("1.0.0")
+            // Channels removed from protocol - no longer included in manifest response
+            result["models"] = AnyCodable([:] as [String: AnyCodable])
+            result["name"] = AnyCodable("Swift Janus Server API")
+            result["description"] = AnyCodable("Swift implementation of Janus SOCK_DGRAM server")
+            return .success(AnyCodable(result))
+        }
     }
 }

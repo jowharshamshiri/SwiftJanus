@@ -23,26 +23,25 @@ final class NetworkFailureTests: XCTestCase {
         try? FileManager.default.removeItem(atPath: testSocketPath)
         
         // Create test Manifest
-        let argSpec = ArgumentSpec(
+        let argManifest = ArgumentManifest(
             type: .string,
             required: false,
-            validation: ValidationSpec(maxLength: 1000)
+            validation: ValidationManifest(maxLength: 1000)
         )
         
-        let commandSpec = CommandSpec(
-            description: "Test command",
-            args: ["data": argSpec],
-            response: ResponseSpec(type: .object)
-        )
-        
-        let channelSpec = ChannelSpec(
-            description: "Test channel",
-            commands: ["testCommand": commandSpec]
+        let requestManifest = RequestManifest(
+            description: "Test request",
+            args: ["data": argManifest],
+            response: ResponseManifest(type: .object)
         )
         
         testManifest = Manifest(
             version: "1.0.0",
-            channels: ["testChannel": channelSpec]
+            models: ["testModel": ModelManifest(
+                type: .object,
+                properties: ["id": ArgumentManifest(type: .string, required: true)],
+                description: "Test model"
+            )]
         )
     }
     
@@ -61,11 +60,10 @@ final class NetworkFailureTests: XCTestCase {
     func testConnectionToNonExistentSocket() async throws {
         let client = try await JanusClient(
             socketPath: "/tmp/definitely-does-not-exist-12345.sock",
-            channelId: "testChannel"
         )
         
         do {
-            _ = try await client.sendCommand("testCommand", args: ["data": AnyCodable("test")])
+            _ = try await client.sendRequest("testRequest", args: ["data": AnyCodable("test")])
             XCTFail("Connection to non-existent socket should fail")
         } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
             // Expected
@@ -90,11 +88,10 @@ final class NetworkFailureTests: XCTestCase {
             do {
                 let client = try await JanusClient(
                     socketPath: invalidPath,
-                    channelId: "testChannel"
                 )
                 
                 do {
-                    _ = try await client.sendCommand("testCommand")
+                    _ = try await client.sendRequest("testRequest")
                     XCTFail("Connection to invalid path should fail: \(invalidPath)")
                 } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
                     // Expected
@@ -112,15 +109,14 @@ final class NetworkFailureTests: XCTestCase {
         // In SOCK_DGRAM architecture, timeout is handled by internal timeout manager
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         let startTime = Date()
         
         do {
-            // Send command with very short timeout to test timeout mechanism
-            _ = try await client.sendCommand("ping", timeout: 0.1)
-            XCTFail("Command should timeout due to no server")
+            // Send request with very short timeout to test timeout mechanism
+            _ = try await client.sendRequest("ping", timeout: 0.1)
+            XCTFail("Request should timeout due to no server")
         } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.handlerTimeout.rawValue {
             // This is the expected timeout behavior
             let elapsedTime = Date().timeIntervalSince(startTime)
@@ -138,13 +134,12 @@ final class NetworkFailureTests: XCTestCase {
     func testRepeatedConnectionFailures() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         // Test that repeated failures don't cause issues
         for i in 0..<10 {
             do {
-                _ = try await client.sendCommand("testCommand", args: ["iteration": AnyCodable(i)])
+                _ = try await client.sendRequest("testRequest", args: ["iteration": AnyCodable(i)])
                 XCTFail("Connection should fail on iteration \(i)")
             } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
                 // Expected - each attempt should fail cleanly
@@ -170,11 +165,10 @@ final class NetworkFailureTests: XCTestCase {
             do {
                 let client = try await JanusClient(
                     socketPath: restrictedPath,
-                    channelId: "testChannel"
                 )
                 
                 do {
-                    _ = try await client.sendCommand("testCommand")
+                    _ = try await client.sendRequest("testRequest")
                     // Might succeed if we actually have permission, that's okay
                 } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
                     // Expected - permission denied or path doesn't exist
@@ -193,7 +187,6 @@ final class NetworkFailureTests: XCTestCase {
         // Test behavior when system runs out of file descriptors
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         // Try to create many connections simultaneously
@@ -202,7 +195,7 @@ final class NetworkFailureTests: XCTestCase {
             for i in 0..<1000 {
                 group.addTask {
                     do {
-                        _ = try await client.sendCommand("testCommand", args: ["id": AnyCodable(i)])
+                        _ = try await client.sendRequest("testRequest", args: ["id": AnyCodable(i)])
                     } catch {
                         // Expected to fail due to resource limits or no server
                         // The important thing is that it fails gracefully
@@ -217,7 +210,6 @@ final class NetworkFailureTests: XCTestCase {
     func testMemoryPressureHandling() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         // Create memory pressure during network operations
@@ -230,8 +222,8 @@ final class NetworkFailureTests: XCTestCase {
                     let temporaryData = Array(repeating: largeData, count: 10) // ~4MB per task
                     
                     do {
-                        _ = try await client.sendCommand(
-                            "testCommand", 
+                        _ = try await client.sendRequest(
+                            "testRequest", 
                             args: ["data": AnyCodable("test\(i)"), "large": AnyCodable(temporaryData.joined())]
                         )
                     } catch {
@@ -249,13 +241,12 @@ final class NetworkFailureTests: XCTestCase {
         // SOCK_DGRAM timeout handling is built into the client
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         let startTime = Date()
         
         do {
-            _ = try await client.sendCommand("testCommand")
+            _ = try await client.sendRequest("testRequest")
             XCTFail("Should timeout in slow network conditions")
         } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
             let elapsedTime = Date().timeIntervalSince(startTime)
@@ -270,7 +261,6 @@ final class NetworkFailureTests: XCTestCase {
     func testNetworkInterruption() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         // Simulate network interruption by attempting multiple operations
@@ -279,8 +269,8 @@ final class NetworkFailureTests: XCTestCase {
             for i in 0..<20 {
                 group.addTask {
                     do {
-                        _ = try await client.sendCommand(
-                            "testCommand",
+                        _ = try await client.sendRequest(
+                            "testRequest",
                             args: ["data": AnyCodable("interruption-test-\(i)")]
                         )
                     } catch {
@@ -300,12 +290,10 @@ final class NetworkFailureTests: XCTestCase {
         
         let client1 = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         let client2 = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         // Both clients should be created successfully
@@ -317,7 +305,6 @@ final class NetworkFailureTests: XCTestCase {
     func testSocketPathChanges() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         // Test behavior when socket path becomes invalid after client creation
@@ -325,7 +312,7 @@ final class NetworkFailureTests: XCTestCase {
         
         // First operation
         do {
-            _ = try await client.sendCommand("testCommand")
+            _ = try await client.sendRequest("testRequest")
         } catch {
             // Expected to fail - no server
         }
@@ -337,7 +324,7 @@ final class NetworkFailureTests: XCTestCase {
         
         // Second operation (socket path now points to directory)
         do {
-            _ = try await client.sendCommand("testCommand")
+            _ = try await client.sendRequest("testRequest")
         } catch {
             // Should fail gracefully with appropriate error
         }
@@ -351,7 +338,6 @@ final class NetworkFailureTests: XCTestCase {
     func testErrorRecoverySequence() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         // Test sequence: failure -> retry -> failure -> retry
@@ -361,7 +347,7 @@ final class NetworkFailureTests: XCTestCase {
         
         for operation in operations {
             do {
-                _ = try await client.sendCommand("testCommand", args: ["op": AnyCodable(operation)])
+                _ = try await client.sendRequest("testRequest", args: ["op": AnyCodable(operation)])
             } catch {
                 // Each failure should be independent
                 // The client should remain in a valid state for the next operation
@@ -370,7 +356,7 @@ final class NetworkFailureTests: XCTestCase {
         
         // After all failures, client should still be usable
         do {
-            _ = try await client.sendCommand("testCommand", args: ["final": AnyCodable("test")])
+            _ = try await client.sendRequest("testRequest", args: ["final": AnyCodable("test")])
         } catch {
             // Expected to fail, but should not crash
         }
@@ -379,7 +365,6 @@ final class NetworkFailureTests: XCTestCase {
     func testConcurrentFailureHandling() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         // Test concurrent operations that all fail
@@ -387,8 +372,8 @@ final class NetworkFailureTests: XCTestCase {
             for i in 0..<30 {
                 group.addTask {
                     do {
-                        _ = try await client.sendCommand(
-                            "testCommand",
+                        _ = try await client.sendRequest(
+                            "testRequest",
                             args: ["concurrentFailure": AnyCodable(i)]
                         )
                     } catch {
@@ -400,7 +385,7 @@ final class NetworkFailureTests: XCTestCase {
         
         // After concurrent failures, client should still be functional
         do {
-            _ = try await client.sendCommand("testCommand", args: ["post": AnyCodable("concurrent")])
+            _ = try await client.sendRequest("testRequest", args: ["post": AnyCodable("concurrent")])
         } catch {
             // Expected to fail, but should not be in a broken state
         }
@@ -415,13 +400,12 @@ final class NetworkFailureTests: XCTestCase {
         do {
             let client = try await JanusClient(
                 socketPath: longPath,
-                channelId: "testChannel"
             )
             
             // If client creation succeeds, try to use it
             Task {
                 do {
-                    _ = try await client.sendCommand("testCommand")
+                    _ = try await client.sendRequest("testRequest")
                 } catch {
                     // Expected to fail due to path length or no server
                 }
@@ -432,8 +416,8 @@ final class NetworkFailureTests: XCTestCase {
         }
     }
     
-    func testSocketPathWithSpecialCharacters() async throws {
-        let specialPaths = [
+    func testSocketPathWithManifestialCharacters() async throws {
+        let manifestialPaths = [
             "/tmp/socket with spaces.sock",
             "/tmp/socket-with-dashes.sock",
             "/tmp/socket_with_underscores.sock",
@@ -441,20 +425,19 @@ final class NetworkFailureTests: XCTestCase {
             "/tmp/socket123numbers.sock"
         ]
         
-        for specialPath in specialPaths {
+        for manifestialPath in manifestialPaths {
             do {
                 let client = try await JanusClient(
-                    socketPath: specialPath,
-                    channelId: "testChannel"
+                    socketPath: manifestialPath,
                 )
                 
                 do {
-                    _ = try await client.sendCommand("testCommand")
+                    _ = try await client.sendRequest("testRequest")
                 } catch {
                     // Expected to fail due to no server, but path handling should work
                 }
             } catch {
-                // Some special characters might be rejected by validation
+                // Some manifestial characters might be rejected by validation
                 // This is acceptable behavior
             }
         }
@@ -463,7 +446,6 @@ final class NetworkFailureTests: XCTestCase {
     func testRapidConnectionCycling() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         // Test rapid connect/disconnect cycles
@@ -471,7 +453,7 @@ final class NetworkFailureTests: XCTestCase {
             let startTime = Date()
             
             do {
-                _ = try await client.sendCommand("testCommand", args: ["cycle": AnyCodable(cycle)])
+                _ = try await client.sendRequest("testRequest", args: ["cycle": AnyCodable(cycle)])
             } catch {
                 // Expected to fail quickly
             }
@@ -490,8 +472,7 @@ final class NetworkFailureTests: XCTestCase {
         for i in 0..<100 {
             do {
                 let client = try await JanusClient(
-                    socketPath: "\(testSocketPath!)-\(i)",
-                    channelId: "testChannel"
+                    socketPath: "\(testSocketPath!)-\(i)"
                 )
                 manyClients.append(client)
             } catch {
@@ -505,8 +486,8 @@ final class NetworkFailureTests: XCTestCase {
             for (index, client) in manyClients.enumerated() {
                 group.addTask {
                     do {
-                        _ = try await client.sendCommand(
-                            "testCommand",
+                        _ = try await client.sendRequest(
+                            "testRequest",
                             args: ["clientIndex": AnyCodable(index)]
                         )
                     } catch {
@@ -522,7 +503,6 @@ final class NetworkFailureTests: XCTestCase {
     func testGracefulDegradation() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         // Test that failures don't cause permanent damage
@@ -536,8 +516,8 @@ final class NetworkFailureTests: XCTestCase {
         
         for (index, testName) in testSequence.enumerated() {
             do {
-                _ = try await client.sendCommand(
-                    "testCommand",
+                _ = try await client.sendRequest(
+                    "testRequest",
                     args: ["test": AnyCodable(testName), "index": AnyCodable(index)]
                 )
             } catch {

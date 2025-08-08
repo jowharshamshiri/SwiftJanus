@@ -1,6 +1,6 @@
 // EchoFixTest.swift
 // Simple test to verify JanusServer echo fix works properly
-// This tests the actual JanusServer class (not the SwiftJanusDgram command line tool)
+// This tests the actual JanusServer class (not the SwiftJanusDgram request line tool)
 
 import XCTest
 import Foundation
@@ -61,18 +61,17 @@ final class EchoFixTest: XCTestCase {
         // Create client
         let client = try await JanusClient(
             socketPath: socketPath,
-            channelId: "test",
             enableValidation: false  // Disable validation for simple test
         )
         print("✅ JanusClient created")
         
-        // Test echo command
-        print("📤 Sending echo command...")
+        // Test echo request
+        print("📤 Sending echo request...")
         let testMessage = "Hello from test!"
         let echoArgs = ["message": AnyCodable(testMessage)]
         print("  Args being sent: \(echoArgs)")
         
-        let response = try await client.sendCommand(
+        let response = try await client.sendRequest(
             "echo", 
             args: echoArgs,
             timeout: 3.0
@@ -80,11 +79,11 @@ final class EchoFixTest: XCTestCase {
         
         print("📥 Received response:")
         print("  Success: \(response.success)")
-        print("  Command ID: \(response.commandId)")
+        print("  Request ID: \(response.requestId)")
         print("  Channel ID: \(response.channelId)")
         
         // Verify response is successful
-        XCTAssertTrue(response.success, "Echo command should succeed")
+        XCTAssertTrue(response.success, "Echo request should succeed")
         XCTAssertEqual(response.channelId, "test", "Channel ID should match")
         
         // Check result format
@@ -111,14 +110,14 @@ final class EchoFixTest: XCTestCase {
             XCTFail("Response result should be a dictionary, got: \(response.result?.value ?? "nil")")
         }
         
-        // Test ping command for comparison
-        print("📤 Sending ping command for comparison...")
-        let pingResponse = try await client.sendCommand("ping", timeout: 3.0)
+        // Test ping request for comparison
+        print("📤 Sending ping request for comparison...")
+        let pingResponse = try await client.sendRequest("ping", timeout: 3.0)
         
         print("📥 Ping response:")
         print("  Success: \(pingResponse.success)")
         
-        XCTAssertTrue(pingResponse.success, "Ping command should succeed")
+        XCTAssertTrue(pingResponse.success, "Ping request should succeed")
         
         if let result = pingResponse.result?.value as? [String: Any] {
             print("  Result: \(result)")

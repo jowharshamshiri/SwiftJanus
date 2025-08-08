@@ -44,15 +44,15 @@ DerivedData/
 !default.mode1v3
 *.mode2v3
 !default.mode2v3
-*.perspectivev3
-!default.perspectivev3
+*.permanifesttivev3
+!default.permanifesttivev3
 
 # Other
 *.moved-aside
 *.xccheckout
 *.xcscmblueprint
 
-# Obj-C/Swift specific
+# Obj-C/Swift manifestific
 *.hmap
 *.ipa
 *.dSYM.zip
@@ -242,7 +242,7 @@ dist
 .pnp.*
 
 # =============================================================================
-# Project Specific
+# Project Manifestific
 # =============================================================================
 # Scribono Engine logs
 engine.log

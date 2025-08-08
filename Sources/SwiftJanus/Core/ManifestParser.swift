@@ -58,109 +58,55 @@ public final class ManifestParser {
     }
     
     /// Validate Manifest structure
-    public static func validate(_ spec: Manifest) throws {
+    public static func validate(_ manifest: Manifest) throws {
         // Validate version format
-        guard !spec.version.isEmpty else {
+        guard !manifest.version.isEmpty else {
             throw ManifestError.validationFailed("API version cannot be empty")
         }
         
-        // Validate channels
-        guard !spec.channels.isEmpty else {
-            throw ManifestError.validationFailed("API must define at least one channel")
-        }
-        
-        // Validate each channel
-        for (channelId, channel) in spec.channels {
-            try validateChannel(channelId: channelId, channel: channel, models: spec.models)
-        }
+        // Channel validation removed - channels no longer part of protocol
     }
     
-    private static func validateChannel(channelId: String, channel: ChannelSpec, models: [String: ModelSpec]?) throws {
-        guard !channelId.isEmpty else {
-            throw ManifestError.validationFailed("Channel ID cannot be empty")
-        }
-        
-        guard !channel.commands.isEmpty else {
-            throw ManifestError.validationFailed("Channel '\(channelId)' must define at least one command")
-        }
-        
-        // Validate each command
-        for (commandName, command) in channel.commands {
-            try validateCommand(commandName: commandName, command: command, channelId: channelId, models: models)
-        }
-    }
+    // validateChannel removed - channels no longer part of protocol
     
-    private static func validateCommand(commandName: String, command: CommandSpec, channelId: String, models: [String: ModelSpec]?) throws {
-        guard !commandName.isEmpty else {
-            throw ManifestError.validationFailed("Command name cannot be empty in channel '\(channelId)'")
-        }
-        
-        // Reserved built-in commands cannot be defined in Manifests
-        let reservedCommands: Set<String> = ["spec", "ping", "echo", "get_info", "validate", "slow_process"]
-        if reservedCommands.contains(commandName) {
-            throw ManifestError.validationFailed("Command '\(commandName)' is reserved and cannot be defined in Manifest in channel '\(channelId)'")
-        }
-        
-        // Validate arguments if present
-        if let args = command.args {
-            for (argName, argSpec) in args {
-                try validateArgument(argName: argName, argSpec: argSpec, context: "command '\(commandName)' in channel '\(channelId)'", models: models)
-            }
-        }
-        
-        // Validate response if present
-        if let response = command.response {
-            try validateResponse(response: response, context: "command '\(commandName)' in channel '\(channelId)'", models: models)
-        }
-        
-        // Validate error codes if present
-        if let errorCodes = command.errorCodes {
-            for errorCode in errorCodes {
-                // Error codes are now just strings, no detailed spec validation needed
-                if errorCode.isEmpty {
-                    throw ManifestError.invalidFormat("Empty error code in command '\(commandName)' in channel '\(channelId)'")
-                }
-            }
-        }
-    }
-    
-    private static func validateArgument(argName: String, argSpec: ArgumentSpec, context: String, models: [String: ModelSpec]?) throws {
+    // Channel-based validation removed - server handles validation
+    private static func validateArgument(argName: String, argManifest: ArgumentManifest, context: String, models: [String: ModelManifest]?) throws {
         guard !argName.isEmpty else {
             throw ManifestError.validationFailed("Argument name cannot be empty in \(context)")
         }
         
         // Validate type reference if it's a reference type
-        if argSpec.type == .reference {
+        if argManifest.type == .reference {
             // Implementation for model reference validation would go here
             // For now, we'll skip this validation
         }
         
         // Validate validation constraints if present
-        if let validation = argSpec.validation {
-            try validateValidationSpec(validation: validation, argName: argName, context: context)
+        if let validation = argManifest.validation {
+            try validateValidationManifest(validation: validation, argName: argName, context: context)
         }
     }
     
-    private static func validateResponse(response: ResponseSpec, context: String, models: [String: ModelSpec]?) throws {
+    private static func validateResponse(response: ResponseManifest, context: String, models: [String: ModelManifest]?) throws {
         // Validate response properties if present
         if let properties = response.properties {
-            for (propName, propSpec) in properties {
-                try validateArgument(argName: propName, argSpec: propSpec, context: "response of \(context)", models: models)
+            for (propName, propManifest) in properties {
+                try validateArgument(argName: propName, argManifest: propManifest, context: "response of \(context)", models: models)
             }
         }
     }
     
-    private static func validateError(errorName: String, errorSpec: ErrorSpec, context: String) throws {
+    private static func validateError(errorName: String, errorManifest: ErrorManifest, context: String) throws {
         guard !errorName.isEmpty else {
             throw ManifestError.validationFailed("Error name cannot be empty in \(context)")
         }
         
-        guard !errorSpec.message.isEmpty else {
+        guard !errorManifest.message.isEmpty else {
             throw ManifestError.validationFailed("Error message cannot be empty for error '\(errorName)' in \(context)")
         }
     }
     
-    private static func validateValidationSpec(validation: ValidationSpec, argName: String, context: String) throws {
+    private static func validateValidationManifest(validation: ValidationManifest, argName: String, context: String) throws {
         // Validate string length constraints
         if let minLength = validation.minLength, let maxLength = validation.maxLength {
             guard minLength <= maxLength else {
@@ -188,16 +134,16 @@ public final class ManifestParser {
     // MARK: - Serialization Methods
     
     /// Serialize Manifest to JSON data
-    public func serializeToJSON(_ spec: Manifest) throws -> Data {
+    public func serializeToJSON(_ manifest: Manifest) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
-        return try encoder.encode(spec)
+        return try encoder.encode(manifest)
     }
     
     /// Serialize Manifest to JSON string
-    public func serializeToJSONString(_ spec: Manifest) throws -> String {
-        let data = try serializeToJSON(spec)
+    public func serializeToJSONString(_ manifest: Manifest) throws -> String {
+        let data = try serializeToJSON(manifest)
         guard let jsonString = String(data: data, encoding: .utf8) else {
             throw ManifestError.invalidFormat("Failed to create JSON string from data")
         }
@@ -205,9 +151,9 @@ public final class ManifestParser {
     }
     
     /// Serialize Manifest to YAML data
-    public func serializeToYAML(_ spec: Manifest) throws -> Data {
+    public func serializeToYAML(_ manifest: Manifest) throws -> Data {
         let encoder = YAMLEncoder()
-        let yamlString = try encoder.encode(spec)
+        let yamlString = try encoder.encode(manifest)
         guard let data = yamlString.data(using: .utf8) else {
             throw ManifestError.invalidFormat("Failed to create YAML data from string")
         }
@@ -215,9 +161,9 @@ public final class ManifestParser {
     }
     
     /// Serialize Manifest to YAML string
-    public func serializeToYAMLString(_ spec: Manifest) throws -> String {
+    public func serializeToYAMLString(_ manifest: Manifest) throws -> String {
         let encoder = YAMLEncoder()
-        return try encoder.encode(spec)
+        return try encoder.encode(manifest)
     }
     
     // MARK: - Multi-File Parsing and Merging
@@ -229,42 +175,33 @@ public final class ManifestParser {
         }
         
         // Parse first file as base
-        var baseSpec = try parseFromFile(at: urls[0])
+        var baseManifest = try parseFromFile(at: urls[0])
         
         // Merge additional files
         for url in urls.dropFirst() {
-            let additionalSpec = try parseFromFile(at: url)
-            try mergeSpecifications(base: &baseSpec, additional: additionalSpec)
+            let additionalManifest = try parseFromFile(at: url)
+            try mergeManifests(base: &baseManifest, additional: additionalManifest)
         }
         
-        // Validate merged specification
-        try ManifestParser.validate(baseSpec)
+        // Validate merged manifest
+        try ManifestParser.validate(baseManifest)
         
-        return baseSpec
+        return baseManifest
     }
     
     /// Merge two Manifests
-    public func mergeSpecifications(base: inout Manifest, additional: Manifest) throws {
-        // Check for conflicts first
-        for (channelId, _) in additional.channels {
-            if base.channels[channelId] != nil {
-                throw ManifestError.validationFailed("Channel '\(channelId)' already exists in base specification")
-            }
-        }
+    public func mergeManifests(base: inout Manifest, additional: Manifest) throws {
+        // Channel conflict checking removed - channels no longer part of protocol
         
         if let additionalModels = additional.models, let baseModels = base.models {
             for (modelName, _) in additionalModels {
                 if baseModels[modelName] != nil {
-                    throw ManifestError.validationFailed("Model '\(modelName)' already exists in base specification")
+                    throw ManifestError.validationFailed("Model '\(modelName)' already exists in base manifest")
                 }
             }
         }
         
-        // Create merged channels
-        var mergedChannels = base.channels
-        for (channelId, channelSpec) in additional.channels {
-            mergedChannels[channelId] = channelSpec
-        }
+        // Channel merging removed - channels no longer part of protocol
         
         // Create merged models
         var mergedModels = base.models
@@ -272,8 +209,8 @@ public final class ManifestParser {
             if mergedModels == nil {
                 mergedModels = [:]
             }
-            for (modelName, modelSpec) in additionalModels {
-                mergedModels![modelName] = modelSpec
+            for (modelName, modelManifest) in additionalModels {
+                mergedModels![modelName] = modelManifest
             }
         }
         
@@ -281,56 +218,55 @@ public final class ManifestParser {
         base = Manifest(
             version: base.version,
             name: base.name,
-            channels: mergedChannels,
             models: mergedModels
         )
     }
     
     // MARK: - Argument Validation Engine
     
-    /// Validate command arguments against their specifications
-    public func validateCommandArguments(_ args: [String: Any], against argSpecs: [String: ArgumentSpec], models: [String: ModelSpec]?) throws {
+    /// Validate request arguments against their manifests
+    public func validateRequestArguments(_ args: [String: Any], against argManifests: [String: ArgumentManifest], models: [String: ModelManifest]?) throws {
         // Check required arguments
-        for (argName, argSpec) in argSpecs {
-            if argSpec.required && args[argName] == nil {
+        for (argName, argManifest) in argManifests {
+            if argManifest.required && args[argName] == nil {
                 throw ManifestError.validationFailed("Required argument '\(argName)' is missing")
             }
         }
         
         // Validate provided arguments
         for (argName, argValue) in args {
-            guard let argSpec = argSpecs[argName] else {
+            guard let argManifest = argManifests[argName] else {
                 throw ManifestError.validationFailed("Unknown argument '\(argName)'")
             }
             
-            try validateArgumentValue(name: argName, value: argValue, spec: argSpec, models: models)
+            try validateArgumentValue(name: argName, value: argValue, manifest: argManifest, models: models)
         }
     }
     
-    /// Validate a single argument value against its specification
-    public func validateArgumentValue(name: String, value: Any, spec: ArgumentSpec, models: [String: ModelSpec]?) throws {
+    /// Validate a single argument value against its manifest
+    public func validateArgumentValue(name: String, value: Any, manifest: ArgumentManifest, models: [String: ModelManifest]?) throws {
         // Handle nil values
         if value is NSNull {
-            if spec.required {
+            if manifest.required {
                 throw ManifestError.validationFailed("Required argument '\(name)' cannot be null")
             }
             return
         }
         
         // Type validation
-        try validateArgumentType(name: name, value: value, spec: spec)
+        try validateArgumentType(name: name, value: value, manifest: manifest)
         
         // Validation constraints
-        if let validation = spec.validation {
-            try validateArgumentConstraints(name: name, value: value, validation: validation, spec: spec)
+        if let validation = manifest.validation {
+            try validateArgumentConstraints(name: name, value: value, validation: validation, manifest: manifest)
         }
         
         // Model reference validation is handled through type validation
         // Swift doesn't have separate modelRef field like other implementations
     }
     
-    private func validateArgumentType(name: String, value: Any, spec: ArgumentSpec) throws {
-        switch spec.type {
+    private func validateArgumentType(name: String, value: Any, manifest: ArgumentManifest) throws {
+        switch manifest.type {
         case .string:
             guard value is String else {
                 throw ManifestError.validationFailed("Argument '\(name)' expected string, got \(type(of: value))")
@@ -365,9 +301,9 @@ public final class ManifestParser {
         }
     }
     
-    private func validateArgumentConstraints(name: String, value: Any, validation: ValidationSpec, spec: ArgumentSpec) throws {
+    private func validateArgumentConstraints(name: String, value: Any, validation: ValidationManifest, manifest: ArgumentManifest) throws {
         // String constraints
-        if spec.type == .string, let stringValue = value as? String {
+        if manifest.type == .string, let stringValue = value as? String {
             if let minLength = validation.minLength, stringValue.count < minLength {
                 throw ManifestError.validationFailed("Argument '\(name)' length \(stringValue.count) is less than minimum \(minLength)")
             }
@@ -384,7 +320,7 @@ public final class ManifestParser {
         }
         
         // Numeric constraints
-        if spec.type == .number || spec.type == .integer {
+        if manifest.type == .number || manifest.type == .integer {
             let numericValue: Double
             if let intValue = value as? Int {
                 numericValue = Double(intValue)
@@ -416,8 +352,8 @@ public final class ManifestParser {
         }
     }
     
-    private func validateModelReference(name: String, value: Any, modelRef: String, models: [String: ModelSpec]?) throws {
-        guard let models = models, let modelSpec = models[modelRef] else {
+    private func validateModelReference(name: String, value: Any, modelRef: String, models: [String: ModelManifest]?) throws {
+        guard let models = models, let modelManifest = models[modelRef] else {
             throw ManifestError.validationFailed("Model reference '\(modelRef)' not found for argument '\(name)'")
         }
         
@@ -426,7 +362,7 @@ public final class ManifestParser {
         }
         
         // Check required properties
-        if let required = modelSpec.required {
+        if let required = modelManifest.required {
             for requiredProp in required {
                 if valueDict[requiredProp] == nil {
                     throw ManifestError.validationFailed("Required property '\(requiredProp)' missing in argument '\(name)' (model '\(modelRef)')")
@@ -434,13 +370,13 @@ public final class ManifestParser {
             }
         }
         
-        // Validate properties (modelSpec.properties is not optional in Swift)
+        // Validate properties (modelManifest.properties is not optional in Swift)
         for (propName, propValue) in valueDict {
-            guard let propSpec = modelSpec.properties[propName] else {
+            guard let propManifest = modelManifest.properties[propName] else {
                 throw ManifestError.validationFailed("Unknown property '\(propName)' in argument '\(name)' (model '\(modelRef)')")
             }
             
-            try validateArgumentValue(name: "\(name).\(propName)", value: propValue, spec: propSpec, models: models)
+            try validateArgumentValue(name: "\(name).\(propName)", value: propValue, manifest: propManifest, models: models)
         }
     }
 }
@@ -480,27 +416,27 @@ extension ManifestParser {
     }
     
     /// Static method for JSON serialization
-    public static func serializeToJSON(_ spec: Manifest) throws -> Data {
+    public static func serializeToJSON(_ manifest: Manifest) throws -> Data {
         let parser = ManifestParser()
-        return try parser.serializeToJSON(spec)
+        return try parser.serializeToJSON(manifest)
     }
     
     /// Static method for JSON string serialization
-    public static func serializeToJSONString(_ spec: Manifest) throws -> String {
+    public static func serializeToJSONString(_ manifest: Manifest) throws -> String {
         let parser = ManifestParser()
-        return try parser.serializeToJSONString(spec)
+        return try parser.serializeToJSONString(manifest)
     }
     
     /// Static method for YAML serialization
-    public static func serializeToYAML(_ spec: Manifest) throws -> Data {
+    public static func serializeToYAML(_ manifest: Manifest) throws -> Data {
         let parser = ManifestParser()
-        return try parser.serializeToYAML(spec)
+        return try parser.serializeToYAML(manifest)
     }
     
     /// Static method for YAML string serialization
-    public static func serializeToYAMLString(_ spec: Manifest) throws -> String {
+    public static func serializeToYAMLString(_ manifest: Manifest) throws -> String {
         let parser = ManifestParser()
-        return try parser.serializeToYAMLString(spec)
+        return try parser.serializeToYAMLString(manifest)
     }
     
     /// Static method for multi-file parsing
@@ -509,16 +445,16 @@ extension ManifestParser {
         return try parser.parseMultipleFiles(at: urls)
     }
     
-    /// Static method for specification merging
-    public static func mergeSpecifications(base: inout Manifest, additional: Manifest) throws {
+    /// Static method for manifest merging
+    public static func mergeManifests(base: inout Manifest, additional: Manifest) throws {
         let parser = ManifestParser()
-        try parser.mergeSpecifications(base: &base, additional: additional)
+        try parser.mergeManifests(base: &base, additional: additional)
     }
     
     /// Static method for argument validation
-    public static func validateCommandArguments(_ args: [String: Any], against argSpecs: [String: ArgumentSpec], models: [String: ModelSpec]?) throws {
+    public static func validateRequestArguments(_ args: [String: Any], against argManifests: [String: ArgumentManifest], models: [String: ModelManifest]?) throws {
         let parser = ManifestParser()
-        try parser.validateCommandArguments(args, against: argSpecs, models: models)
+        try parser.validateRequestArguments(args, against: argManifests, models: models)
     }
 }
 

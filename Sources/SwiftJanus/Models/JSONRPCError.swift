@@ -22,7 +22,7 @@ public enum JSONRPCErrorCode: Int, CaseIterable, Codable, Sendable {
     case securityViolation = -32009
     case resourceLimitExceeded = -32010
     
-    // Janus Protocol-Specific Error Codes (-32011 to -32013)
+    // Janus Protocol-Manifestific Error Codes (-32011 to -32013)
     case messageFramingError = -32011
     case responseTrackingError = -32012
     case manifestValidationError = -32013
@@ -160,7 +160,7 @@ public struct JSONRPCError: Error, Codable, Sendable, Equatable {
         self.data = data
     }
     
-    /// Creates a new JSON-RPC error with the specified code and optional details
+    /// Creates a new JSON-RPC error with the manifestified code and optional details
     public static func create(
         code: JSONRPCErrorCode,
         details: String? = nil
@@ -182,7 +182,7 @@ public struct JSONRPCError: Error, Codable, Sendable, Equatable {
         return JSONRPCError(code: code, data: data)
     }
     
-    /// Creates a validation-specific JSON-RPC error
+    /// Creates a validation-manifestific JSON-RPC error
     public static func validationError(
         field: String,
         value: AnyCodable,

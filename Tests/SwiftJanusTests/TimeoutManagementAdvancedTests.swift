@@ -25,17 +25,17 @@ final class TimeoutManagementAdvancedTests: XCTestCase {
         let expectation = expectation(description: "Timeout extension test")
         var timeoutFired = false
         
-        let commandId = "test-extend-command"
+        let requestId = "test-extend-request"
         
         // Register a timeout for 0.2 seconds
-        timeoutManager.registerTimeout(commandId: commandId, timeout: 0.2) {
+        timeoutManager.registerTimeout(requestId: requestId, timeout: 0.2) {
             timeoutFired = true
             expectation.fulfill()
         }
         
         // Wait 0.1 seconds, then extend by 0.2 seconds  
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            let extended = self.timeoutManager.extendTimeout(commandId: commandId, additionalTime: 0.2)
+            let extended = self.timeoutManager.extendTimeout(requestId: requestId, additionalTime: 0.2)
             XCTAssertTrue(extended, "Expected timeout extension to succeed")
         }
         
@@ -53,35 +53,35 @@ final class TimeoutManagementAdvancedTests: XCTestCase {
     
     /// Test extending non-existent timeout
     func testTimeoutExtensionNonExistent() throws {
-        let extended = timeoutManager.extendTimeout(commandId: "non-existent", additionalTime: 0.1)
+        let extended = timeoutManager.extendTimeout(requestId: "non-existent", additionalTime: 0.1)
         XCTAssertFalse(extended, "Expected extension of non-existent timeout to fail")
     }
     
     /// Test timeout extension boundary conditions
     func testTimeoutExtensionBoundaryConditions() throws {
-        let commandId = "test-boundary-extend"
+        let requestId = "test-boundary-extend"
         
         // Register a timeout with longer duration
-        timeoutManager.registerTimeout(commandId: commandId, timeout: 0.2) {}
+        timeoutManager.registerTimeout(requestId: requestId, timeout: 0.2) {}
         
         // Test extending with zero duration
-        let extendedZero = timeoutManager.extendTimeout(commandId: commandId, additionalTime: 0.0)
+        let extendedZero = timeoutManager.extendTimeout(requestId: requestId, additionalTime: 0.0)
         XCTAssertTrue(extendedZero, "Expected zero-duration extension to succeed")
         
         // Test extending with very small duration (but still give it time to work)
-        let extendedTiny = timeoutManager.extendTimeout(commandId: commandId, additionalTime: 0.001)
+        let extendedTiny = timeoutManager.extendTimeout(requestId: requestId, additionalTime: 0.001)
         XCTAssertTrue(extendedTiny, "Expected tiny extension to succeed")
         
         // Cancel the timeout to clean up
-        timeoutManager.cancelTimeout(commandId: commandId)
+        timeoutManager.cancelTimeout(requestId: requestId)
         
         // Test extending already expired timeout
-        timeoutManager.registerTimeout(commandId: "test-quick-expire", timeout: 0.001) {}
+        timeoutManager.registerTimeout(requestId: "test-quick-expire", timeout: 0.001) {}
         
         // Wait for it to expire
         Thread.sleep(forTimeInterval: 0.01)
         
-        let extendedExpired = timeoutManager.extendTimeout(commandId: "test-quick-expire", additionalTime: 0.1)
+        let extendedExpired = timeoutManager.extendTimeout(requestId: "test-quick-expire", additionalTime: 0.1)
         XCTAssertFalse(extendedExpired, "Expected extension of expired timeout to fail")
     }
     
@@ -98,7 +98,7 @@ final class TimeoutManagementAdvancedTests: XCTestCase {
         
         // Register timeout with error callback (valid case)
         timeoutManager.registerTimeoutWithErrorHandling(
-            commandId: "test-error-handled",
+            requestId: "test-error-handled",
             timeout: 0.05,
             onTimeout: {
                 timeoutFired = true
@@ -128,7 +128,7 @@ final class TimeoutManagementAdvancedTests: XCTestCase {
         
         // Test with negative timeout
         timeoutManager.registerTimeoutWithErrorHandling(
-            commandId: "test-invalid-timeout",
+            requestId: "test-invalid-timeout",
             timeout: -1.0,
             onTimeout: {
                 XCTFail("Timeout callback should not be called for invalid timeout")
@@ -145,18 +145,18 @@ final class TimeoutManagementAdvancedTests: XCTestCase {
         XCTAssertEqual(timeoutManager.activeTimeoutCount, 0, "Should have no active timeouts for invalid registration")
     }
     
-    /// Test error-handled registration with empty command ID
-    func testErrorHandledRegistrationEmptyCommandId() throws {
-        let errorExpectation = expectation(description: "Error callback for empty command ID")
+    /// Test error-handled registration with empty request ID
+    func testErrorHandledRegistrationEmptyRequestId() throws {
+        let errorExpectation = expectation(description: "Error callback for empty request ID")
         
         var errorReceived: Error?
         
-        // Test with empty command ID
+        // Test with empty request ID
         timeoutManager.registerTimeoutWithErrorHandling(
-            commandId: "",
+            requestId: "",
             timeout: 0.1,
             onTimeout: {
-                XCTFail("Timeout callback should not be called for empty command ID")
+                XCTFail("Timeout callback should not be called for empty request ID")
             },
             onError: { error in
                 errorReceived = error
@@ -166,7 +166,7 @@ final class TimeoutManagementAdvancedTests: XCTestCase {
         
         waitForExpectations(timeout: 0.1, handler: nil)
         
-        XCTAssertNotNil(errorReceived, "Error should have been received for empty command ID")
+        XCTAssertNotNil(errorReceived, "Error should have been received for empty request ID")
         XCTAssertEqual(timeoutManager.activeTimeoutCount, 0, "Should have no active timeouts for invalid registration")
     }
     
@@ -183,11 +183,11 @@ final class TimeoutManagementAdvancedTests: XCTestCase {
         var requestTimeoutFired = false
         var responseTimeoutFired = false
         
-        let baseCommandId = "test-bilateral"
+        let baseRequestId = "test-bilateral"
         
         // Register bilateral timeout
         timeoutManager.registerBilateralTimeout(
-            commandId: baseCommandId,
+            requestId: baseRequestId,
             requestTimeout: 0.1,
             responseTimeout: 0.15,
             onRequestTimeout: {
@@ -204,7 +204,7 @@ final class TimeoutManagementAdvancedTests: XCTestCase {
         XCTAssertEqual(timeoutManager.activeTimeoutCount, 2, "Expected 2 active timeouts for bilateral")
         
         // Cancel bilateral timeout
-        let cancelledCount = timeoutManager.cancelBilateralTimeout(commandId: baseCommandId)
+        let cancelledCount = timeoutManager.cancelBilateralTimeout(requestId: baseRequestId)
         
         XCTAssertEqual(cancelledCount, 2, "Expected to cancel 2 timeouts")
         XCTAssertEqual(timeoutManager.activeTimeoutCount, 0, "Expected 0 active timeouts after cancellation")
@@ -223,11 +223,11 @@ final class TimeoutManagementAdvancedTests: XCTestCase {
         var requestTimeoutFired = false
         var responseTimeoutFired = false
         
-        let baseCommandId = "test-bilateral-expire"
+        let baseRequestId = "test-bilateral-expire"
         
         // Register bilateral timeout with short durations
         timeoutManager.registerBilateralTimeout(
-            commandId: baseCommandId,
+            requestId: baseRequestId,
             requestTimeout: 0.05, // Shorter timeout
             responseTimeout: 0.1,  // Longer timeout
             onRequestTimeout: {
@@ -260,11 +260,11 @@ final class TimeoutManagementAdvancedTests: XCTestCase {
         var requestTimeoutTime: Date?
         var responseTimeoutTime: Date?
         
-        let baseCommandId = "test-bilateral-different"
+        let baseRequestId = "test-bilateral-different"
         
         // Register bilateral timeout with different durations
         timeoutManager.registerBilateralTimeout(
-            commandId: baseCommandId,
+            requestId: baseRequestId,
             requestTimeout: 0.05,
             responseTimeout: 0.1,
             onRequestTimeout: {
@@ -298,9 +298,9 @@ final class TimeoutManagementAdvancedTests: XCTestCase {
     /// Test timeout statistics accuracy (matches Go/TypeScript statistics implementation)
     func testTimeoutStatisticsAccuracy() throws {
         // Register multiple timeouts
-        timeoutManager.registerTimeout(commandId: "cmd1", timeout: 0.1) {}
-        timeoutManager.registerTimeout(commandId: "cmd2", timeout: 0.2) {}
-        timeoutManager.registerTimeout(commandId: "cmd3", timeout: 0.05) {}
+        timeoutManager.registerTimeout(requestId: "cmd1", timeout: 0.1) {}
+        timeoutManager.registerTimeout(requestId: "cmd2", timeout: 0.2) {}
+        timeoutManager.registerTimeout(requestId: "cmd3", timeout: 0.05) {}
         
         let stats = timeoutManager.getTimeoutStatistics()
         
@@ -319,7 +319,7 @@ final class TimeoutManagementAdvancedTests: XCTestCase {
         }
         
         // Cancel one timeout
-        let cancelled = timeoutManager.cancelTimeout(commandId: "cmd2")
+        let cancelled = timeoutManager.cancelTimeout(requestId: "cmd2")
         XCTAssertTrue(cancelled, "Expected timeout cancellation to succeed")
         
         let updatedStats = timeoutManager.getTimeoutStatistics()
@@ -345,24 +345,24 @@ final class TimeoutManagementAdvancedTests: XCTestCase {
         
         // Launch multiple concurrent timeout operations
         for i in 0..<numberOfOperations {
-            let commandId = "concurrent-\\(i)" // Move outside to ensure it's captured properly
+            let requestId = "concurrent-\\(i)" // Move outside to ensure it's captured properly
             operationQueue.addOperation {
                 // Register timeout
-                timeoutManager.registerTimeout(commandId: commandId, timeout: 0.1) {}
+                timeoutManager.registerTimeout(requestId: requestId, timeout: 0.1) {}
                 
                 // Randomly cancel some timeouts
                 if i % 3 == 0 {
-                    let capturedCommandId = commandId // Capture for closure
+                    let capturedRequestId = requestId // Capture for closure
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        timeoutManager.cancelTimeout(commandId: capturedCommandId)
+                        timeoutManager.cancelTimeout(requestId: capturedRequestId)
                     }
                 }
                 
                 // Randomly extend some timeouts
                 if i % 5 == 0 {
-                    let capturedCommandId = commandId // Capture for closure
+                    let capturedRequestId = requestId // Capture for closure
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
-                        timeoutManager.extendTimeout(commandId: capturedCommandId, additionalTime: 0.05)
+                        timeoutManager.extendTimeout(requestId: capturedRequestId, additionalTime: 0.05)
                     }
                 }
                 
@@ -393,11 +393,11 @@ final class TimeoutManagementAdvancedTests: XCTestCase {
         let extendedTimeoutExpectation = expectation(description: "Extended bilateral timeout")
         
         var requestTimeoutFired = false
-        let baseCommandId = "test-bilateral-extend"
+        let baseRequestId = "test-bilateral-extend"
         
         // Register bilateral timeout
         timeoutManager.registerBilateralTimeout(
-            commandId: baseCommandId,
+            requestId: baseRequestId,
             requestTimeout: 0.05,
             responseTimeout: 0.1,
             onRequestTimeout: {
@@ -412,7 +412,7 @@ final class TimeoutManagementAdvancedTests: XCTestCase {
         // Extend the request timeout
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
             let extended = self.timeoutManager.extendTimeout(
-                commandId: "\(baseCommandId)-request", 
+                requestId: "\(baseRequestId)-request", 
                 additionalTime: 0.05
             )
             XCTAssertTrue(extended, "Expected bilateral request timeout extension to succeed")

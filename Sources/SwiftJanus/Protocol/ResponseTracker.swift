@@ -1,7 +1,7 @@
 import Foundation
 
-/// Pending command awaiting response
-public class PendingCommand {
+/// Pending request awaiting response
+public class PendingRequest {
     let resolve: (JanusResponse) -> Void
     let reject: (Error) -> Void
     let timestamp: Date
@@ -17,31 +17,31 @@ public class PendingCommand {
 
 /// Configuration for response tracker
 public struct TrackerConfig {
-    let maxPendingCommands: Int
+    let maxPendingRequests: Int
     let cleanupInterval: TimeInterval
     let defaultTimeout: TimeInterval
     
-    public init(maxPendingCommands: Int = 1000, cleanupInterval: TimeInterval = 30.0, defaultTimeout: TimeInterval = 30.0) {
-        self.maxPendingCommands = maxPendingCommands
+    public init(maxPendingRequests: Int = 1000, cleanupInterval: TimeInterval = 30.0, defaultTimeout: TimeInterval = 30.0) {
+        self.maxPendingRequests = maxPendingRequests
         self.cleanupInterval = cleanupInterval
         self.defaultTimeout = defaultTimeout
     }
 }
 
-/// Command statistics for monitoring
-public struct CommandStatistics {
-    public let totalPendingCommands: Int
-    public let totalResolvedCommands: Int
-    public let totalRejectedCommands: Int
-    public let totalTimeoutCommands: Int
+/// Request statistics for monitoring
+public struct RequestStatistics {
+    public let totalPendingRequests: Int
+    public let totalResolvedRequests: Int
+    public let totalRejectedRequests: Int
+    public let totalTimeoutRequests: Int
     public let averageResponseTime: TimeInterval
     public let oldestPendingAge: TimeInterval?
     
-    public init(totalPendingCommands: Int, totalResolvedCommands: Int, totalRejectedCommands: Int, totalTimeoutCommands: Int, averageResponseTime: TimeInterval, oldestPendingAge: TimeInterval?) {
-        self.totalPendingCommands = totalPendingCommands
-        self.totalResolvedCommands = totalResolvedCommands
-        self.totalRejectedCommands = totalRejectedCommands
-        self.totalTimeoutCommands = totalTimeoutCommands
+    public init(totalPendingRequests: Int, totalResolvedRequests: Int, totalRejectedRequests: Int, totalTimeoutRequests: Int, averageResponseTime: TimeInterval, oldestPendingAge: TimeInterval?) {
+        self.totalPendingRequests = totalPendingRequests
+        self.totalResolvedRequests = totalResolvedRequests
+        self.totalRejectedRequests = totalRejectedRequests
+        self.totalTimeoutRequests = totalTimeoutRequests
         self.averageResponseTime = averageResponseTime
         self.oldestPendingAge = oldestPendingAge
     }
@@ -49,7 +49,7 @@ public struct CommandStatistics {
 
 /// Async response correlation and timeout handling for Swift
 public class ResponseTracker {
-    private var pendingCommands: [String: PendingCommand] = [:]
+    private var pendingRequests: [String: PendingRequest] = [:]
     private let queue = DispatchQueue(label: "response.tracker", attributes: .concurrent)
     private var dispatchTimer: DispatchSourceTimer?
     private let config: TrackerConfig
@@ -57,9 +57,9 @@ public class ResponseTracker {
     private var isShutdown = false
     
     // Statistics tracking
-    private var totalResolvedCommands = 0
-    private var totalRejectedCommands = 0
-    private var totalTimeoutCommands = 0
+    private var totalResolvedRequests = 0
+    private var totalRejectedRequests = 0
+    private var totalTimeoutRequests = 0
     private var totalResponseTime: TimeInterval = 0.0
     
     /// Initialize response tracker with configuration
@@ -72,9 +72,9 @@ public class ResponseTracker {
         shutdown()
     }
     
-    /// Register a command for response tracking
-    public func registerCommand(
-        commandId: String,
+    /// Register a request for response tracking
+    public func registerRequest(
+        requestId: String,
         timeout: TimeInterval? = nil,
         resolve: @escaping (JanusResponse) -> Void,
         reject: @escaping (Error) -> Void
@@ -84,81 +84,81 @@ public class ResponseTracker {
                 throw JSONRPCError.create(code: .responseTrackingError, details: "Response tracker has been shutdown")
             }
             
-            guard pendingCommands.count < config.maxPendingCommands else {
-                throw JSONRPCError.create(code: .responseTrackingError, details: "Maximum pending commands (\(config.maxPendingCommands)) exceeded")
+            guard pendingRequests.count < config.maxPendingRequests else {
+                throw JSONRPCError.create(code: .responseTrackingError, details: "Maximum pending requests (\(config.maxPendingRequests)) exceeded")
             }
             
             let effectiveTimeout = timeout ?? config.defaultTimeout
-            let pendingCommand = PendingCommand(resolve: resolve, reject: reject, timeout: effectiveTimeout)
-            pendingCommands[commandId] = pendingCommand
+            let pendingRequest = PendingRequest(resolve: resolve, reject: reject, timeout: effectiveTimeout)
+            pendingRequests[requestId] = pendingRequest
             
             // Emit register event
-            emit("register", data: ["commandId": commandId, "timeout": effectiveTimeout])
+            emit("register", data: ["requestId": requestId, "timeout": effectiveTimeout])
             
-            // Setup individual command timeout
+            // Setup individual request timeout
             DispatchQueue.global().asyncAfter(deadline: .now() + effectiveTimeout) { [weak self] in
-                self?.timeoutCommand(commandId: commandId)
+                self?.timeoutRequest(requestId: requestId)
             }
         }
     }
     
-    /// Resolve a command with response
-    public func resolveCommand(commandId: String, response: JanusResponse) -> Bool {
+    /// Resolve a request with response
+    public func resolveRequest(requestId: String, response: JanusResponse) -> Bool {
         return queue.sync(flags: .barrier) {
-            guard let pendingCommand = pendingCommands.removeValue(forKey: commandId) else {
+            guard let pendingRequest = pendingRequests.removeValue(forKey: requestId) else {
                 return false
             }
             
-            let responseTime = Date().timeIntervalSince(pendingCommand.timestamp)
-            totalResolvedCommands += 1
+            let responseTime = Date().timeIntervalSince(pendingRequest.timestamp)
+            totalResolvedRequests += 1
             totalResponseTime += responseTime
             
             // Emit resolve event
-            emit("resolve", data: ["commandId": commandId, "responseTime": responseTime])
+            emit("resolve", data: ["requestId": requestId, "responseTime": responseTime])
             
-            pendingCommand.resolve(response)
+            pendingRequest.resolve(response)
             return true
         }
     }
     
-    /// Reject a command with error
-    public func rejectCommand(commandId: String, error: Error) -> Bool {
+    /// Reject a request with error
+    public func rejectRequest(requestId: String, error: Error) -> Bool {
         return queue.sync(flags: .barrier) {
-            guard let pendingCommand = pendingCommands.removeValue(forKey: commandId) else {
+            guard let pendingRequest = pendingRequests.removeValue(forKey: requestId) else {
                 return false
             }
             
-            totalRejectedCommands += 1
+            totalRejectedRequests += 1
             
             // Emit reject event
-            emit("reject", data: ["commandId": commandId, "error": error.localizedDescription])
+            emit("reject", data: ["requestId": requestId, "error": error.localizedDescription])
             
-            pendingCommand.reject(error)
+            pendingRequest.reject(error)
             return true
         }
     }
     
-    /// Cancel a specific command
-    public func cancelCommand(commandId: String) -> Bool {
-        return rejectCommand(commandId: commandId, error: JSONRPCError.create(code: .responseTrackingError, details: "Command cancelled"))
+    /// Cancel a manifestific request
+    public func cancelRequest(requestId: String) -> Bool {
+        return rejectRequest(requestId: requestId, error: JSONRPCError.create(code: .responseTrackingError, details: "Request cancelled"))
     }
     
-    /// Cancel all pending commands
-    public func cancelAllCommands() -> Int {
+    /// Cancel all pending requests
+    public func cancelAllRequests() -> Int {
         return queue.sync(flags: .barrier) {
-            return cancelAllCommandsUnsafe()
+            return cancelAllRequestsUnsafe()
         }
     }
     
-    /// Cancel all pending commands (unsafe - must be called within queue)
-    private func cancelAllCommandsUnsafe() -> Int {
-        let cancelledCount = pendingCommands.count
-        let commandIds = Array(pendingCommands.keys)
+    /// Cancel all pending requests (unsafe - must be called within queue)
+    private func cancelAllRequestsUnsafe() -> Int {
+        let cancelledCount = pendingRequests.count
+        let requestIds = Array(pendingRequests.keys)
         
-        for commandId in commandIds {
-            if let pendingCommand = pendingCommands.removeValue(forKey: commandId) {
-                totalRejectedCommands += 1
-                pendingCommand.reject(JSONRPCError.create(code: .responseTrackingError, details: "All commands cancelled"))
+        for requestId in requestIds {
+            if let pendingRequest = pendingRequests.removeValue(forKey: requestId) {
+                totalRejectedRequests += 1
+                pendingRequest.reject(JSONRPCError.create(code: .responseTrackingError, details: "All requests cancelled"))
             }
         }
         
@@ -168,21 +168,21 @@ public class ResponseTracker {
         return cancelledCount
     }
     
-    /// Get command statistics
-    public func getStatistics() -> CommandStatistics {
+    /// Get request statistics
+    public func getStatistics() -> RequestStatistics {
         return queue.sync {
-            let totalPendingCommands = pendingCommands.count
-            let averageResponseTime = totalResolvedCommands > 0 ? totalResponseTime / Double(totalResolvedCommands) : 0.0
+            let totalPendingRequests = pendingRequests.count
+            let averageResponseTime = totalResolvedRequests > 0 ? totalResponseTime / Double(totalResolvedRequests) : 0.0
             
-            let oldestPendingAge: TimeInterval? = pendingCommands.values.min { a, b in
+            let oldestPendingAge: TimeInterval? = pendingRequests.values.min { a, b in
                 a.timestamp < b.timestamp
             }?.timestamp.timeIntervalSinceNow.magnitude
             
-            return CommandStatistics(
-                totalPendingCommands: totalPendingCommands,
-                totalResolvedCommands: totalResolvedCommands,
-                totalRejectedCommands: totalRejectedCommands,
-                totalTimeoutCommands: totalTimeoutCommands,
+            return RequestStatistics(
+                totalPendingRequests: totalPendingRequests,
+                totalResolvedRequests: totalResolvedRequests,
+                totalRejectedRequests: totalRejectedRequests,
+                totalTimeoutRequests: totalTimeoutRequests,
                 averageResponseTime: averageResponseTime,
                 oldestPendingAge: oldestPendingAge
             )
@@ -218,8 +218,8 @@ public class ResponseTracker {
             self.dispatchTimer?.cancel()
             self.dispatchTimer = nil
             
-            // Cancel all pending commands
-            _ = self.cancelAllCommandsUnsafe()
+            // Cancel all pending requests
+            _ = self.cancelAllRequestsUnsafe()
             
             // Emit shutdown event
             self.emit("shutdown", data: ["timestamp": Date().timeIntervalSince1970])
@@ -234,42 +234,42 @@ public class ResponseTracker {
         let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global())
         timer.schedule(deadline: .now() + interval, repeating: interval)
         timer.setEventHandler { [weak self] in
-            self?.cleanupExpiredCommands()
+            self?.cleanupExpiredRequests()
         }
         timer.resume()
         // Store the timer reference (we'll need to update the property type)
         self.dispatchTimer = timer
     }
     
-    private func cleanupExpiredCommands() {
+    private func cleanupExpiredRequests() {
         queue.async(flags: .barrier) {
             let now = Date()
-            var expiredCommands: [String] = []
+            var expiredRequests: [String] = []
             
-            for (commandId, pendingCommand) in self.pendingCommands {
-                if now.timeIntervalSince(pendingCommand.timestamp) > pendingCommand.timeout {
-                    expiredCommands.append(commandId)
+            for (requestId, pendingRequest) in self.pendingRequests {
+                if now.timeIntervalSince(pendingRequest.timestamp) > pendingRequest.timeout {
+                    expiredRequests.append(requestId)
                 }
             }
             
-            for commandId in expiredCommands {
-                self.timeoutCommand(commandId: commandId)
+            for requestId in expiredRequests {
+                self.timeoutRequest(requestId: requestId)
             }
         }
     }
     
-    private func timeoutCommand(commandId: String) {
+    private func timeoutRequest(requestId: String) {
         queue.async(flags: .barrier) {
-            guard let pendingCommand = self.pendingCommands.removeValue(forKey: commandId) else {
+            guard let pendingRequest = self.pendingRequests.removeValue(forKey: requestId) else {
                 return
             }
             
-            self.totalTimeoutCommands += 1
+            self.totalTimeoutRequests += 1
             
             // Emit timeout event
-            self.emit("timeout", data: ["commandId": commandId, "elapsedTime": Date().timeIntervalSince(pendingCommand.timestamp)])
+            self.emit("timeout", data: ["requestId": requestId, "elapsedTime": Date().timeIntervalSince(pendingRequest.timestamp)])
             
-            pendingCommand.reject(JSONRPCError.create(code: .responseTrackingError, details: "Command \(commandId) timed out after \(pendingCommand.timeout) seconds"))
+            pendingRequest.reject(JSONRPCError.create(code: .responseTrackingError, details: "Request \(requestId) timed out after \(pendingRequest.timeout) seconds"))
         }
     }
 }

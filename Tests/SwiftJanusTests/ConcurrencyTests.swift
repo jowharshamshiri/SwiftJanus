@@ -71,12 +71,12 @@ final class ConcurrencyTests: XCTestCase {
         )
         let server = JanusServer(config: config)
         
-        // Register test command handlers
-        server.registerHandler("testCommand") { command in
+        // Register test request handlers
+        server.registerHandler("testRequest") { request in
             return .success(AnyCodable(true))
         }
         
-        server.registerHandler("quickCommand") { command in
+        server.registerHandler("quickRequest") { request in
             return .success(AnyCodable(true))
         }
         
@@ -85,11 +85,10 @@ final class ConcurrencyTests: XCTestCase {
     
     // MARK: - High Concurrency Tests
     
-    func testHighConcurrencyCommandExecution() async throws {
+    func testHighConcurrencyRequestExecution() async throws {
         // Client-only concurrency test - avoids server socket buffer issues
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         let concurrentOperations = 20
@@ -99,9 +98,9 @@ final class ConcurrencyTests: XCTestCase {
             for i in 0..<concurrentOperations {
                 group.addTask {
                     do {
-                        // Attempt commands - some may fail due to no server, but should not crash
-                        let response = try await client.sendCommand(
-                            "testCommand",
+                        // Attempt requests - some may fail due to no server, but should not crash
+                        let response = try await client.sendRequest(
+                            "testRequest",
                             args: ["data": AnyCodable("concurrent-test-\(i)"), "id": AnyCodable("\(i)")]
                         )
                         
@@ -161,14 +160,13 @@ final class ConcurrencyTests: XCTestCase {
     func testConcurrentHandlerRegistration() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         let handlerCount = 20
         var registrationErrors = 0
         
         // Handler registration would be server-side functionality
-        // Client focuses on sending commands, not handling them
+        // Client focuses on sending requests, not handling them
         
         // The library should handle concurrent registration gracefully
         // Either all succeed (if it allows multiple handlers) or some fail gracefully
@@ -181,7 +179,6 @@ final class ConcurrencyTests: XCTestCase {
         let uniqueSocketPath = tempDir.appendingPathComponent("pool-test-\(UUID().uuidString.prefix(8)).sock").path
         let client = try await JanusClient(
             socketPath: uniqueSocketPath,
-            channelId: "testChannel"
         )
         
         let operationCount = 50 // More than pool size
@@ -191,8 +188,8 @@ final class ConcurrencyTests: XCTestCase {
             for i in 0..<operationCount {
                 group.addTask {
                     do {
-                        _ = try await client.sendCommand(
-                            "testCommand",
+                        _ = try await client.sendRequest(
+                            "testRequest",
                             args: ["data": AnyCodable("pool-test-\(i)")]
                         )
                         counter.incrementSuccess()
@@ -216,17 +213,16 @@ final class ConcurrencyTests: XCTestCase {
     func testConcurrentStateModification() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         // Test concurrent access to internal state
         await withTaskGroup(of: Void.self) { group in
-            // Concurrent command executions
+            // Concurrent request executions
             for i in 0..<20 {
                 group.addTask {
                     do {
-                        _ = try await client.sendCommand(
-                            "testCommand",
+                        _ = try await client.sendRequest(
+                            "testRequest",
                             args: ["data": AnyCodable("race-test-\(i)")]
                         )
                     } catch {
@@ -252,7 +248,6 @@ final class ConcurrencyTests: XCTestCase {
         let uniqueSocketPath = tempDir.appendingPathComponent("conn-mgmt-\(UUID().uuidString.prefix(8)).sock").path
         let client = try await JanusClient(
             socketPath: uniqueSocketPath,
-            channelId: "testChannel"
         )
         
         // Test concurrent connection creation and cleanup
@@ -260,9 +255,9 @@ final class ConcurrencyTests: XCTestCase {
             for i in 0..<30 {
                 group.addTask {
                     do {
-                        // Start a command (creates connection)
-                        _ = try await client.sendCommand(
-                            "testCommand", 
+                        // Start a request (creates connection)
+                        _ = try await client.sendRequest(
+                            "testRequest", 
                             args: ["data": AnyCodable("connection-\(i)")]
                         )
                     } catch {
@@ -280,7 +275,6 @@ final class ConcurrencyTests: XCTestCase {
         let uniqueSocketPath = tempDir.appendingPathComponent("config-test-\(UUID().uuidString.prefix(8)).sock").path
         let client = try await JanusClient(
             socketPath: uniqueSocketPath,
-            channelId: "testChannel"
         )
         
         // Test concurrent access to configuration (thread-safe operations)
@@ -291,16 +285,16 @@ final class ConcurrencyTests: XCTestCase {
             for i in 0..<accessCount {
                 group.addTask {
                     do {
-                        // Mix of configuration access and command attempts
+                        // Mix of configuration access and request attempts
                         if i % 2 == 0 {
                             // Test configuration access (should always work)
                             _ = client.channelIdValue
                             _ = client.socketPathValue
                             counter.incrementSuccess()
                         } else {
-                            // Test command execution (may fail, testing thread safety not functionality)
-                            _ = try await client.sendCommand(
-                                "quickCommand",
+                            // Test request execution (may fail, testing thread safety not functionality)
+                            _ = try await client.sendRequest(
+                                "quickRequest",
                                 args: ["test": AnyCodable("thread-safety-\(i)")]
                             )
                             counter.incrementSuccess()
@@ -322,21 +316,20 @@ final class ConcurrencyTests: XCTestCase {
     func testThreadSafetyOfManifestAccess() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         // Test concurrent access to Manifest
         let accessCount = 100
-        let specAccesses = OSAllocatedUnfairLock(initialState: 0)
+        let manifestAccesses = OSAllocatedUnfairLock(initialState: 0)
         
         DispatchQueue.concurrentPerform(iterations: accessCount) { _ in
             // Access Manifest from multiple threads using proper getter
-            // Specification access would be internal to SOCK_DGRAM implementation
+            // Manifest access would be internal to SOCK_DGRAM implementation
             // Testing thread safety of client operations instead
-            specAccesses.withLock { $0 += 1 }
+            manifestAccesses.withLock { $0 += 1 }
         }
         
-        XCTAssertEqual(specAccesses.withLock { $0 }, accessCount)
+        XCTAssertEqual(manifestAccesses.withLock { $0 }, accessCount)
     }
     
     // MARK: - Deadlock Prevention Tests
@@ -344,7 +337,6 @@ final class ConcurrencyTests: XCTestCase {
     func testNoDeadlockUnderLoad() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         // Create a scenario that could potentially cause deadlocks
@@ -357,8 +349,8 @@ final class ConcurrencyTests: XCTestCase {
             for i in 0..<taskCount {
                 group.addTask {
                     do {
-                        _ = try await client.sendCommand(
-                            "testCommand",
+                        _ = try await client.sendRequest(
+                            "testRequest",
                             args: ["data": AnyCodable("deadlock-test-\(i)")]
                         )
                     } catch {
@@ -375,7 +367,6 @@ final class ConcurrencyTests: XCTestCase {
     func testNoDeadlockWithMixedOperations() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         let startTime = Date()
@@ -384,12 +375,12 @@ final class ConcurrencyTests: XCTestCase {
         await withTaskGroup(of: Void.self) { group in
             // Mix of different operations that could interact
             
-            // Commands
+            // Requests
             for i in 0..<20 {
                 group.addTask {
                     do {
-                        _ = try await client.sendCommand(
-                            "testCommand",
+                        _ = try await client.sendRequest(
+                            "testRequest",
                             args: ["data": AnyCodable("mixed-\(i)")]
                         )
                     } catch {
@@ -410,7 +401,7 @@ final class ConcurrencyTests: XCTestCase {
             for _ in 0..<10 {
                 group.addTask {
                     // Configuration access would be internal
-                    // Specification access would be internal
+                    // Manifest access would be internal
                 }
             }
         }
@@ -424,7 +415,6 @@ final class ConcurrencyTests: XCTestCase {
     func testMemorySafetyUnderConcurrentAccess() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         // Test that concurrent access doesn't cause memory issues
@@ -435,7 +425,7 @@ final class ConcurrencyTests: XCTestCase {
                     let args = ["data": AnyCodable("memory-test-\(i)"), "timestamp": AnyCodable(Date().timeIntervalSince1970)]
                     
                     do {
-                        _ = try await client.sendCommand("testCommand", args: args)
+                        _ = try await client.sendRequest("testRequest", args: args)
                     } catch {
                         // Expected
                     }
@@ -462,8 +452,8 @@ final class ConcurrencyTests: XCTestCase {
                         )
                         
                         // Use the client briefly
-                        _ = try await client.sendCommand(
-                            "testCommand",
+                        _ = try await client.sendRequest(
+                            "testRequest",
                             args: ["data": AnyCodable("cleanup-\(i)")]
                         )
                     } catch {
@@ -484,7 +474,6 @@ final class ConcurrencyTests: XCTestCase {
         // SOCK_DGRAM doesn't use connection pools - each operation is stateless
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         // Test concurrent access to connection pool
@@ -492,8 +481,8 @@ final class ConcurrencyTests: XCTestCase {
             for i in 0..<30 {
                 group.addTask {
                     do {
-                        _ = try await client.sendCommand(
-                            "testCommand",
+                        _ = try await client.sendRequest(
+                            "testRequest",
                             args: ["poolTest": AnyCodable(i)]
                         )
                     } catch {
@@ -511,7 +500,6 @@ final class ConcurrencyTests: XCTestCase {
     func testHighVolumeRequestStress() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         let requestCount = 200
@@ -523,8 +511,8 @@ final class ConcurrencyTests: XCTestCase {
             for i in 0..<requestCount {
                 group.addTask {
                     do {
-                        _ = try await client.sendCommand(
-                            "testCommand",
+                        _ = try await client.sendRequest(
+                            "testRequest",
                             args: [
                                 "data": AnyCodable("stress-\(i)"),
                                 "payload": AnyCodable(String(repeating: "data", count: 100))
@@ -563,8 +551,8 @@ final class ConcurrencyTests: XCTestCase {
                             for requestId in 0..<requestsPerClient {
                                 requestGroup.addTask {
                                     do {
-                                        _ = try await client.sendCommand(
-                                            "testCommand",
+                                        _ = try await client.sendRequest(
+                                            "testRequest",
                                             args: [
                                                 "clientId": AnyCodable(clientId),
                                                 "requestId": AnyCodable(requestId)

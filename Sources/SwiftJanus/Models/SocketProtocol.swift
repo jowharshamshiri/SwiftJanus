@@ -3,20 +3,20 @@
 
 import Foundation
 
-/// Command message sent over socket
-public struct JanusCommand: Codable, Sendable {
+/// Request message sent over socket (PRIME DIRECTIVE: exact format for 100% cross-platform compatibility)
+public struct JanusRequest: Codable, Sendable {
     public let id: String
-    public let channelId: String
-    public let command: String
+    public let method: String
+    public let request: String
     public let replyTo: String?
     public let args: [String: AnyCodable]?
     public let timeout: TimeInterval?
-    public let timestamp: Double
+    public let timestamp: String
     
     enum CodingKeys: String, CodingKey {
         case id
-        case channelId
-        case command
+        case method
+        case request
         case replyTo = "reply_to"
         case args
         case timeout
@@ -25,47 +25,76 @@ public struct JanusCommand: Codable, Sendable {
     
     public init(
         id: String = UUID().uuidString,
-        channelId: String,
-        command: String,
+        request: String,
         replyTo: String? = nil,
         args: [String: AnyCodable]? = nil,
-        timeout: TimeInterval? = nil,
-        timestamp: Double = Date().timeIntervalSince1970
+        timeout: TimeInterval? = nil
     ) {
         self.id = id
-        self.channelId = channelId
-        self.command = command
+        self.method = request // PRIME DIRECTIVE: method field matches request name
+        self.request = request
         self.replyTo = replyTo
         self.args = args
         self.timeout = timeout
-        self.timestamp = timestamp
+        // PRIME DIRECTIVE: Use RFC 3339 timestamp format
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        self.timestamp = formatter.string(from: Date())
     }
 }
 
-/// Response message sent over socket
-/// Updated to support direct value responses for protocol compliance
+/// Response message sent over socket (PRIME DIRECTIVE: exact format for 100% cross-platform compatibility)
 public struct JanusResponse: Codable, Sendable {
-    public let commandId: String
-    public let channelId: String
-    public let success: Bool
     public let result: AnyCodable?
     public let error: JSONRPCError?
-    public let timestamp: Double
+    public let success: Bool
+    public let requestId: String
+    public let id: String
+    public let timestamp: String
+    
+    private enum CodingKeys: String, CodingKey {
+        case result
+        case error
+        case success
+        case requestId = "request_id"
+        case id
+        case timestamp
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(result, forKey: .result)
+        try container.encodeIfPresent(error, forKey: .error)
+        try container.encode(success, forKey: .success)
+        try container.encode(requestId, forKey: .requestId)
+        try container.encode(id, forKey: .id)
+        try container.encode(timestamp, forKey: .timestamp)
+    }
     
     public init(
-        commandId: String,
-        channelId: String,
+        requestId: String,
         success: Bool,
         result: AnyCodable? = nil,
-        error: JSONRPCError? = nil,
-        timestamp: Double = Date().timeIntervalSince1970
+        error: JSONRPCError? = nil
     ) {
-        self.commandId = commandId
-        self.channelId = channelId
-        self.success = success
         self.result = result
         self.error = error
-        self.timestamp = timestamp
+        self.success = success
+        self.requestId = requestId
+        self.id = UUID().uuidString
+        // PRIME DIRECTIVE: Use RFC 3339 timestamp format
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        self.timestamp = formatter.string(from: Date())
+    }
+    
+    // PRIME DIRECTIVE: Convenience constructors for standardized responses
+    public static func success(requestId: String, result: AnyCodable?) -> JanusResponse {
+        return JanusResponse(requestId: requestId, success: true, result: result, error: nil)
+    }
+    
+    public static func error(requestId: String, error: JSONRPCError) -> JanusResponse {
+        return JanusResponse(requestId: requestId, success: false, result: nil, error: error)
     }
     
 }
@@ -96,7 +125,7 @@ public struct SocketMessage: Codable, Sendable {
 
 /// Types of socket messages (stateless)
 public enum MessageType: String, Codable, Sendable {
-    case command
+    case request
     case response
 }
 
@@ -107,29 +136,23 @@ public enum MessageType: String, Codable, Sendable {
 /// Hides internal UUID complexity from users
 public final class RequestHandle: @unchecked Sendable {
     private let internalID: String
-    private let command: String
-    private let channel: String
+    private let request: String
     private let timestamp: Date
     private let cancelledFlag = NSLock()
     private var cancelled = false
     
     /// Create a new request handle from internal UUID
-    public init(internalID: String, command: String, channel: String) {
+    public init(internalID: String, request: String) {
         self.internalID = internalID
-        self.command = command
-        self.channel = channel
+        self.request = request
         self.timestamp = Date()
     }
     
-    /// Get the command name for this request
-    public func getCommand() -> String {
-        return command
+    /// Get the request name for this request
+    public func getRequest() -> String {
+        return request
     }
     
-    /// Get the channel ID for this request
-    public func getChannel() -> String {
-        return channel
-    }
     
     /// Get when this request was created
     public func getTimestamp() -> Date {

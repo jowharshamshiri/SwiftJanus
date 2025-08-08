@@ -78,22 +78,22 @@ final class EdgeCasesTests: XCTestCase {
         XCTAssertEqual(array?.count, 5)
     }
     
-    func testJanusCommandWithEmptyArgs() throws {
-        let command = JanusCommand(
+    func testJanusRequestWithEmptyArgs() throws {
+        let request = JanusRequest(
             channelId: "testChannel",
-            command: "testCommand",
+            request: "testRequest",
             args: nil
         )
         
         let encoder = JSONEncoder()
-        let jsonData = try encoder.encode(command)
+        let jsonData = try encoder.encode(request)
         
         let decoder = JSONDecoder()
-        let decodedCommand = try decoder.decode(JanusCommand.self, from: jsonData)
+        let decodedRequest = try decoder.decode(JanusRequest.self, from: jsonData)
         
-        XCTAssertNil(decodedCommand.args)
-        XCTAssertEqual(decodedCommand.channelId, "testChannel")
-        XCTAssertEqual(decodedCommand.command, "testCommand")
+        XCTAssertNil(decodedRequest.args)
+        XCTAssertEqual(decodedRequest.channelId, "testChannel")
+        XCTAssertEqual(decodedRequest.request, "testRequest")
     }
     
     func testJanusResponseWithError() throws {
@@ -103,7 +103,7 @@ final class EdgeCasesTests: XCTestCase {
         )
         
         let response = JanusResponse(
-            commandId: "test-command",
+            requestId: "test-request",
             channelId: "testChannel",
             success: false,
             result: nil,
@@ -124,27 +124,27 @@ final class EdgeCasesTests: XCTestCase {
     
     func testValidationWithEdgeCasePatterns() throws {
         // Test with complex regex pattern
-        let validation = ValidationSpec(
+        let validation = ValidationManifest(
             pattern: "^(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*|\"(?:[\\x01-\\x08\\x0b\\x0c\\x0e-\\x1f\\x21\\x23-\\x5b\\x5d-\\x7f]|\\\\[\\x01-\\x09\\x0b\\x0c\\x0e-\\x7f])*\")@"
         )
         
-        let argSpec = ArgumentSpec(
+        let argManifest = ArgumentManifest(
             type: .string,
             required: true,
             validation: validation
         )
         
-        let commandSpec = CommandSpec(
-            args: ["email": argSpec]
+        let requestManifest = RequestManifest(
+            args: ["email": argManifest]
         )
         
-        let channelSpec = ChannelSpec(
-            commands: ["validateEmail": commandSpec]
+        let channelManifest = ChannelManifest(
+            requests: ["validateEmail": requestManifest]
         )
         
         let manifest = Manifest(
             version: "1.0.0",
-            channels: ["testChannel": channelSpec]
+            channels: ["testChannel": channelManifest]
         )
         
         // Should not throw during validation
@@ -153,50 +153,50 @@ final class EdgeCasesTests: XCTestCase {
     
     func testValidationWithMinMaxEdgeCases() throws {
         // Test with equal min/max values
-        let validation = ValidationSpec(
+        let validation = ValidationManifest(
             minLength: 5,
             maxLength: 5,
             minimum: 10.0,
             maximum: 10.0
         )
         
-        let argSpec = ArgumentSpec(
+        let argManifest = ArgumentManifest(
             type: .string,
             required: true,
             validation: validation
         )
         
-        let commandSpec = CommandSpec(
-            args: ["exactValue": argSpec]
+        let requestManifest = RequestManifest(
+            args: ["exactValue": argManifest]
         )
         
-        let channelSpec = ChannelSpec(
-            commands: ["testExact": commandSpec]
+        let channelManifest = ChannelManifest(
+            requests: ["testExact": requestManifest]
         )
         
         let manifest = Manifest(
             version: "1.0.0",
-            channels: ["testChannel": channelSpec]
+            channels: ["testChannel": channelManifest]
         )
         
         // Should not throw when min equals max
         try ManifestParser.validate(manifest)
     }
     
-    func testManifestWithEmptyCommandArgs() async throws {
-        let commandSpec = CommandSpec(
-            description: "Command with no args",
+    func testManifestWithEmptyRequestArgs() async throws {
+        let requestManifest = RequestManifest(
+            description: "Request with no args",
             args: [:], // Empty args
-            response: ResponseSpec(type: .object)
+            response: ResponseManifest(type: .object)
         )
         
-        let channelSpec = ChannelSpec(
-            commands: ["noArgsCommand": commandSpec]
+        let channelManifest = ChannelManifest(
+            requests: ["noArgsRequest": requestManifest]
         )
         
         let manifest = Manifest(
             version: "1.0.0",
-            channels: ["testChannel": channelSpec]
+            channels: ["testChannel": channelManifest]
         )
         
         // Should validate successfully
@@ -204,17 +204,16 @@ final class EdgeCasesTests: XCTestCase {
         
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
-        // Should be able to call command with no args
+        // Should be able to call request with no args
         do {
-            _ = try await client.sendCommand("noArgsCommand")
-            XCTFail("Command should have failed due to no server running")
+            _ = try await client.sendRequest("noArgsRequest")
+            XCTFail("Request should have failed due to no server running")
         } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue || error.code == JSONRPCErrorCode.socketError.rawValue {
             // Expected - no server running or socket connection failed
         } catch {
-            XCTFail("Command with no args should validate correctly but fail on connection: \(error)")
+            XCTFail("Request with no args should validate correctly but fail on connection: \(error)")
         }
     }
     
@@ -226,53 +225,53 @@ final class EdgeCasesTests: XCTestCase {
             "largeArray": AnyCodable(Array(repeating: "item", count: 1000))
         ]
         
-        let command = JanusCommand(
+        let request = JanusRequest(
             channelId: "testChannel",
-            command: "processLargeData",
+            request: "processLargeData",
             args: largeArgs
         )
         
         // Should be able to serialize large data
         let encoder = JSONEncoder()
-        let jsonData = try encoder.encode(command)
+        let jsonData = try encoder.encode(request)
         
         XCTAssertGreaterThan(jsonData.count, 10000)
         
         // Should be able to deserialize
         let decoder = JSONDecoder()
-        let decodedCommand = try decoder.decode(JanusCommand.self, from: jsonData)
+        let decodedRequest = try decoder.decode(JanusRequest.self, from: jsonData)
         
-        XCTAssertEqual(decodedCommand.command, "processLargeData")
-        XCTAssertNotNil(decodedCommand.args)
+        XCTAssertEqual(decodedRequest.request, "processLargeData")
+        XCTAssertNotNil(decodedRequest.args)
     }
     
-    func testSpecialCharactersInChannelAndCommandNames() async throws {
-        let commandSpec = CommandSpec(
-            description: "Command with special chars",
+    func testManifestialCharactersInChannelAndRequestNames() async throws {
+        let requestManifest = RequestManifest(
+            description: "Request with manifestial chars",
             args: [:],
-            response: ResponseSpec(type: .object)
+            response: ResponseManifest(type: .object)
         )
         
-        // Test various special characters that should be valid in identifiers
+        // Test various manifestial characters that should be valid in identifiers
         let validNames = [
-            "command-with-dashes",
-            "command_with_underscores",
-            "command123withNumbers",
-            "commandWithCamelCase"
+            "request-with-dashes",
+            "request_with_underscores",
+            "request123withNumbers",
+            "requestWithCamelCase"
         ]
         
-        var commands: [String: CommandSpec] = [:]
+        var requests: [String: RequestManifest] = [:]
         for name in validNames {
-            commands[name] = commandSpec
+            requests[name] = requestManifest
         }
         
-        let channelSpec = ChannelSpec(
-            commands: commands
+        let channelManifest = ChannelManifest(
+            requests: requests
         )
         
         let manifest = Manifest(
             version: "1.0.0",
-            channels: ["channel-with-dashes": channelSpec]
+            channels: ["channel-with-dashes": channelManifest]
         )
         
         // Should validate successfully
@@ -280,10 +279,9 @@ final class EdgeCasesTests: XCTestCase {
         
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "channel-with-dashes"
         )
         
-        // Client should validate command names at send time, not registration time
+        // Client should validate request names at send time, not registration time
     }
     
     func testConcurrentClientCreation() async throws {
@@ -310,7 +308,6 @@ final class EdgeCasesTests: XCTestCase {
         do {
             let client = try await JanusClient(
                 socketPath: longPath,
-                channelId: "testChannel"
             )
             XCTAssertNotNil(client)
         } catch {
@@ -318,34 +315,35 @@ final class EdgeCasesTests: XCTestCase {
             // This is acceptable behavior
         }
         
-        // Test with path containing special characters
-        let specialPath = "/tmp/socket-with-special-chars_123.sock"
+        // Test with path containing manifestial characters
+        let manifestialPath = "/tmp/socket-with-manifestial-chars_123.sock"
         
         do {
             let client = try await JanusClient(
-                socketPath: specialPath,
-                channelId: "testChannel"
+                socketPath: manifestialPath,
             )
             XCTAssertNotNil(client)
         } catch {
-            XCTFail("Client creation should succeed with special characters in path: \(error)")
+            XCTFail("Client creation should succeed with manifestial characters in path: \(error)")
         }
     }
     
     private func createSimpleManifest() -> Manifest {
-        let commandSpec = CommandSpec(
-            description: "Simple test command",
+        let requestManifest = RequestManifest(
+            description: "Simple test request",
             args: [:],
-            response: ResponseSpec(type: .object)
-        )
-        
-        let channelSpec = ChannelSpec(
-            commands: ["testCommand": commandSpec]
+            response: ResponseManifest(type: .object)
         )
         
         return Manifest(
             version: "1.0.0",
-            channels: ["testChannel": channelSpec]
+            models: ["testModel": ModelManifest(
+                type: .object,
+                properties: [
+                    "id": ArgumentManifest(type: .string, required: true),
+                    "data": ArgumentManifest(type: .string)
+                ]
+            )]
         )
     }
 }

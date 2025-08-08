@@ -1,5 +1,5 @@
 // TimeoutManager.swift
-// Bilateral timeout management for SOCK_DGRAM commands
+// Bilateral timeout management for SOCK_DGRAM requests
 
 import Foundation
 import Dispatch
@@ -33,25 +33,25 @@ public final class TimeoutManager {
     
     // MARK: - Public Interface
     
-    /// Register a timeout for a command ID (matches Go implementation exactly)
+    /// Register a timeout for a request ID (matches Go implementation exactly)
     /// - Parameters:
-    ///   - commandId: Unique identifier for the command
+    ///   - requestId: Unique identifier for the request
     ///   - timeout: Duration before timeout triggers
     ///   - callback: Function to call when timeout occurs
     public func registerTimeout(
-        commandId: String,
+        requestId: String,
         timeout: TimeInterval,
         callback: @escaping () -> Void
     ) {
         lock.lock()
         defer { lock.unlock() }
         
-        // Cancel existing timeout for this command ID if present
-        cancelTimeout(commandId: commandId, acquireLock: false)
+        // Cancel existing timeout for this request ID if present
+        cancelTimeout(requestId: requestId, acquireLock: false)
         
         // Create new timeout work item
         let workItem = DispatchWorkItem { [weak self] in
-            self?.handleTimeout(commandId: commandId, callback: callback)
+            self?.handleTimeout(requestId: requestId, callback: callback)
         }
         
         // Store the timeout entry
@@ -61,31 +61,31 @@ public final class TimeoutManager {
             registeredAt: Date(),
             timeout: timeout
         )
-        activeTimeouts[commandId] = entry
+        activeTimeouts[requestId] = entry
         
         // Schedule the timeout
         queue.asyncAfter(deadline: .now() + timeout, execute: workItem)
     }
     
-    /// Cancel a timeout for a specific command ID (matches Go implementation exactly)
-    /// - Parameter commandId: Command ID to cancel timeout for
+    /// Cancel a timeout for a manifestific request ID (matches Go implementation exactly)
+    /// - Parameter requestId: Request ID to cancel timeout for
     /// - Returns: true if timeout was found and cancelled, false otherwise
     @discardableResult
-    public func cancelTimeout(commandId: String) -> Bool {
+    public func cancelTimeout(requestId: String) -> Bool {
         lock.lock()
         defer { lock.unlock() }
         
-        return cancelTimeout(commandId: commandId, acquireLock: false)
+        return cancelTimeout(requestId: requestId, acquireLock: false)
     }
     
-    /// Check if a timeout is active for a command ID
-    /// - Parameter commandId: Command ID to check
+    /// Check if a timeout is active for a request ID
+    /// - Parameter requestId: Request ID to check
     /// - Returns: true if timeout is active, false otherwise
-    public func hasActiveTimeout(commandId: String) -> Bool {
+    public func hasActiveTimeout(requestId: String) -> Bool {
         lock.lock()
         defer { lock.unlock() }
         
-        return activeTimeouts[commandId] != nil
+        return activeTimeouts[requestId] != nil
     }
     
     /// Get count of active timeouts
@@ -112,12 +112,12 @@ public final class TimeoutManager {
     
     /// Register a timeout with custom error handling
     /// - Parameters:
-    ///   - commandId: Unique identifier for the command
+    ///   - requestId: Unique identifier for the request
     ///   - timeout: Duration before timeout triggers
     ///   - onTimeout: Function to call when timeout occurs
     ///   - onError: Function to call if timeout registration fails
     public func registerTimeoutWithErrorHandling(
-        commandId: String,
+        requestId: String,
         timeout: TimeInterval,
         onTimeout: @escaping () -> Void,
         onError: @escaping (Error) -> Void
@@ -127,57 +127,57 @@ public final class TimeoutManager {
             return
         }
         
-        guard !commandId.isEmpty else {
-            onError(JSONRPCError.create(code: .invalidParams, details: "Command ID cannot be empty"))
+        guard !requestId.isEmpty else {
+            onError(JSONRPCError.create(code: .invalidParams, details: "Request ID cannot be empty"))
             return
         }
         
-        registerTimeout(commandId: commandId, timeout: timeout, callback: onTimeout)
+        registerTimeout(requestId: requestId, timeout: timeout, callback: onTimeout)
     }
     
     /// Register bilateral timeout (both request and response timeouts)
     /// - Parameters:
-    ///   - commandId: Unique identifier for the command
+    ///   - requestId: Unique identifier for the request
     ///   - requestTimeout: Timeout for the request phase
     ///   - responseTimeout: Timeout for the response phase
     ///   - onRequestTimeout: Callback for request timeout
     ///   - onResponseTimeout: Callback for response timeout
     public func registerBilateralTimeout(
-        commandId: String,
+        requestId: String,
         requestTimeout: TimeInterval,
         responseTimeout: TimeInterval,
         onRequestTimeout: @escaping () -> Void,
         onResponseTimeout: @escaping () -> Void
     ) {
         // Register request timeout
-        let requestTimeoutId = "\(commandId)-request"
+        let requestTimeoutId = "\(requestId)-request"
         registerTimeout(
-            commandId: requestTimeoutId,
+            requestId: requestTimeoutId,
             timeout: requestTimeout,
             callback: onRequestTimeout
         )
         
         // Register response timeout
-        let responseTimeoutId = "\(commandId)-response"
+        let responseTimeoutId = "\(requestId)-response"
         registerTimeout(
-            commandId: responseTimeoutId,
+            requestId: responseTimeoutId,
             timeout: responseTimeout,
             callback: onResponseTimeout
         )
     }
     
     /// Cancel bilateral timeout
-    /// - Parameter commandId: Base command ID
+    /// - Parameter requestId: Base request ID
     /// - Returns: Number of timeouts cancelled (0-2)
     @discardableResult
-    public func cancelBilateralTimeout(commandId: String) -> Int {
+    public func cancelBilateralTimeout(requestId: String) -> Int {
         var cancelledCount = 0
         
-        if cancelTimeout(commandId: "\(commandId)-request") {
+        if cancelTimeout(requestId: "\(requestId)-request") {
             cancelledCount += 1
         }
         
-        if cancelTimeout(commandId: "\(commandId)-response") {
+        if cancelTimeout(requestId: "\(requestId)-response") {
             cancelledCount += 1
         }
         
@@ -186,15 +186,15 @@ public final class TimeoutManager {
     
     /// Extend an existing timeout
     /// - Parameters:
-    ///   - commandId: Command ID to extend timeout for
+    ///   - requestId: Request ID to extend timeout for
     ///   - additionalTime: Additional time to add to the timeout
     /// - Returns: true if timeout was found and extended, false otherwise
     @discardableResult
-    public func extendTimeout(commandId: String, additionalTime: TimeInterval) -> Bool {
+    public func extendTimeout(requestId: String, additionalTime: TimeInterval) -> Bool {
         lock.lock()
         defer { lock.unlock() }
         
-        guard let existingEntry = activeTimeouts[commandId] else {
+        guard let existingEntry = activeTimeouts[requestId] else {
             return false
         }
         
@@ -206,7 +206,7 @@ public final class TimeoutManager {
         let newTimeout = existingEntry.timeout + additionalTime
         
         let newWorkItem = DispatchWorkItem { [weak self] in
-            self?.handleTimeout(commandId: commandId, callback: originalCallback)
+            self?.handleTimeout(requestId: requestId, callback: originalCallback)
         }
         
         // Create new entry with extended timeout
@@ -217,7 +217,7 @@ public final class TimeoutManager {
             timeout: newTimeout
         )
         
-        activeTimeouts[commandId] = newEntry
+        activeTimeouts[requestId] = newEntry
         
         // Schedule with additional time
         queue.asyncAfter(deadline: .now() + additionalTime, execute: newWorkItem)
@@ -241,13 +241,13 @@ public final class TimeoutManager {
     
     // MARK: - Private Methods
     
-    private func cancelTimeout(commandId: String, acquireLock: Bool) -> Bool {
+    private func cancelTimeout(requestId: String, acquireLock: Bool) -> Bool {
         if acquireLock {
             lock.lock()
             defer { lock.unlock() }
         }
         
-        guard let entry = activeTimeouts.removeValue(forKey: commandId) else {
+        guard let entry = activeTimeouts.removeValue(forKey: requestId) else {
             return false
         }
         
@@ -255,24 +255,24 @@ public final class TimeoutManager {
         return true
     }
     
-    private func handleTimeout(commandId: String, callback: @escaping () -> Void) {
+    private func handleTimeout(requestId: String, callback: @escaping () -> Void) {
         // Remove from active timeouts
         lock.lock()
-        activeTimeouts.removeValue(forKey: commandId)
+        activeTimeouts.removeValue(forKey: requestId)
         lock.unlock()
         
         // Execute callback
         callback()
     }
     
-    private func handleTimeoutWithCleanup(commandId: String) {
+    private func handleTimeoutWithCleanup(requestId: String) {
         lock.lock()
-        activeTimeouts.removeValue(forKey: commandId)
+        activeTimeouts.removeValue(forKey: requestId)
         lock.unlock()
         
         // Default timeout handling - could be extended
         // Timeout logging should be handled by the caller or logging system
-        // print("Timeout occurred for command: \(commandId)")
+        // print("Timeout occurred for request: \(requestId)")
     }
 }
 
@@ -282,31 +282,31 @@ extension TimeoutManager {
     
     /// Register timeout with default error handling
     /// - Parameters:
-    ///   - commandId: Command ID
+    ///   - requestId: Request ID
     ///   - timeout: Timeout duration
     ///   - callback: Timeout callback
     public func registerTimeout(
-        commandId: String,
+        requestId: String,
         timeout: TimeInterval,
         callback: @escaping (String) -> Void
     ) {
-        registerTimeout(commandId: commandId, timeout: timeout) {
-            callback(commandId)
+        registerTimeout(requestId: requestId, timeout: timeout) {
+            callback(requestId)
         }
     }
     
     /// Register timeout that throws JanusError on timeout
     /// - Parameters:
-    ///   - commandId: Command ID
+    ///   - requestId: Request ID
     ///   - timeout: Timeout duration
     ///   - completion: Completion handler that will receive timeout error
     public func registerTimeoutWithErrorCompletion(
-        commandId: String,
+        requestId: String,
         timeout: TimeInterval,
         completion: @escaping (Result<Void, JSONRPCError>) -> Void
     ) {
-        registerTimeout(commandId: commandId, timeout: timeout) {
-            completion(.failure(JSONRPCError.create(code: .handlerTimeout, details: "Command \(commandId) timed out after \(timeout) seconds")))
+        registerTimeout(requestId: requestId, timeout: timeout) {
+            completion(.failure(JSONRPCError.create(code: .handlerTimeout, details: "Request \(requestId) timed out after \(timeout) seconds")))
         }
     }
 }

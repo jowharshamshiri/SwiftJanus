@@ -1,10 +1,9 @@
 import Foundation
 
 /// High-level API client for SOCK_DGRAM Unix socket communication
-/// Connectionless implementation with command validation and response correlation
+/// Connectionless implementation with request validation and response correlation
 public class JanusClient {
     private let socketPath: String
-    private let channelId: String
     private var manifest: Manifest?
     private let coreClient: CoreJanusClient
     private let defaultTimeout: TimeInterval
@@ -17,7 +16,6 @@ public class JanusClient {
     
     public init(
         socketPath: String,
-        channelId: String,
         maxMessageSize: Int = 65536,
         defaultTimeout: TimeInterval = 30.0,
         datagramTimeout: TimeInterval = 5.0,
@@ -25,18 +23,16 @@ public class JanusClient {
     ) async throws {
         // Validate constructor inputs (matching Go/Rust implementations)
         try Self.validateConstructorInputs(
-            socketPath: socketPath,
-            channelId: channelId
+            socketPath: socketPath
         )
         
         self.socketPath = socketPath
-        self.channelId = channelId
         self.defaultTimeout = defaultTimeout
         self.enableValidation = enableValidation
         
         // Initialize response tracker
         let trackerConfig = TrackerConfig(
-            maxPendingCommands: 1000,
+            maxPendingRequests: 1000,
             cleanupInterval: 30.0,
             defaultTimeout: defaultTimeout
         )
@@ -63,26 +59,26 @@ public class JanusClient {
             return
         }
         
-        // Fetch Manifest from server using spec command (bypass validation to avoid circular dependency)
+        // Fetch Manifest from server using manifest request (bypass validation to avoid circular dependency)
         do {
-            let specResponse = try await sendBuiltinCommand("spec", args: nil, timeout: 10.0)
-            if specResponse.success {
+            let manifestResponse = try await sendBuiltinRequest("manifest", args: nil, timeout: 10.0)
+            if manifestResponse.success {
                 // Try to parse the AnyCodable result as JSON directly
                 do {
                     let encoder = JSONEncoder()
-                    let jsonData = try encoder.encode(specResponse.result)
-                    let fetchedSpec = try ManifestParser().parseJSON(jsonData)
-                    self.manifest = fetchedSpec
+                    let jsonData = try encoder.encode(manifestResponse.result)
+                    let fetchedManifest = try ManifestParser().parseJSON(jsonData)
+                    self.manifest = fetchedManifest
                 } catch {
                     // If parsing fails, continue without validation
                     self.manifest = nil
                 }
             } else {
-                // If spec command fails, continue without validation
+                // If manifest request fails, continue without validation
                 self.manifest = nil
             }
         } catch {
-            // If spec fetching fails, continue without validation (matching Go behavior)
+            // If manifest fetching fails, continue without validation (matching Go behavior)
             // Preserve connection errors instead of wrapping as validation errors
             if error.localizedDescription.contains("dial") || 
                error.localizedDescription.contains("connect") || 
@@ -93,21 +89,20 @@ public class JanusClient {
         }
     }
     
-    /// Send command via SOCK_DGRAM and wait for response
-    public func sendCommand(
-        _ command: String,
+    /// Send request via SOCK_DGRAM and wait for response
+    public func sendRequest(
+        _ request: String,
         args: [String: AnyCodable]? = nil,
         timeout: TimeInterval? = nil
     ) async throws -> JanusResponse {
-        // Generate command ID and response socket path
-        let commandId = UUID().uuidString
+        // Generate request ID and response socket path
+        let requestId = UUID().uuidString
         let responseSocketPath = coreClient.generateResponseSocketPath()
         
-        // Create socket command
-        let janusCommand = JanusCommand(
-            id: commandId,
-            channelId: channelId,
-            command: command,
+        // Create socket request
+        let janusRequest = JanusRequest(
+            id: requestId,
+            request: request,
             replyTo: responseSocketPath,
             args: args,
             timeout: timeout ?? defaultTimeout
@@ -119,40 +114,46 @@ public class JanusClient {
             do {
                 try await ensureManifestLoaded()
             } catch {
-                // If manifest loading fails but we still want to validate basic command structure,
+                // If manifest loading fails but we still want to validate basic request structure,
                 // we can do basic validation without manifest
-                try validateBasicCommandStructure(janusCommand)
+                try validateBasicRequestStructure(janusRequest)
                 throw error  // Re-throw the connection error after basic validation
             }
         }
         
-        // Validate command against Manifest 
-        if enableValidation, let spec = manifest {
-            try validateCommandAgainstSpec(spec, command: janusCommand)
-        } else if enableValidation {
-            // No manifest available, do basic validation only
-            try validateBasicCommandStructure(janusCommand)
+        // Validate request against Manifest 
+        if enableValidation {
+            // Built-in requests skip manifest validation
+            if isBuiltinRequest(janusRequest.request) {
+                // Built-in requests are always valid, no manifest validation needed
+                try validateBasicRequestStructure(janusRequest)
+            } else if let manifest = manifest {
+                // Non-built-in requests need manifest validation
+                try validateRequestAgainstManifest(manifest, request: janusRequest)
+            } else {
+                // No manifest available, do basic validation only
+                try validateBasicRequestStructure(janusRequest)
+            }
         }
         
-        // Serialize command
+        // Serialize request
         let encoder = JSONEncoder()
-        let commandData = try encoder.encode(janusCommand)
+        let requestData = try encoder.encode(janusRequest)
         
         // Send datagram and wait for response
-        let responseData = try await coreClient.sendDatagram(commandData, responseSocketPath: responseSocketPath)
+        let responseData = try await coreClient.sendDatagram(requestData, responseSocketPath: responseSocketPath)
         
         // Deserialize response
         let decoder = JSONDecoder()
         let response = try decoder.decode(JanusResponse.self, from: responseData)
         
         // Validate response correlation
-        guard response.commandId == commandId else {
-            throw JSONRPCError.create(code: .responseTrackingError, details: "Response correlation mismatch: expected \\(commandId), got \\(response.commandId)")
+        guard response.requestId == requestId else {
+            throw JSONRPCError.create(code: .responseTrackingError, details: "Response correlation mismatch: expected \\(requestId), got \\(response.requestId)")
         }
         
-        guard response.channelId == channelId else {
-            throw JSONRPCError.create(code: .responseTrackingError, details: "Channel mismatch: expected \\(channelId), got \\(response.channelId)")
-        }
+        // PRIME DIRECTIVE: channelId is not part of JanusResponse format
+        // Response validation is based on request_id correlation only
         
         // Update connection state after successful operation
         updateConnectionState(messagesSent: 1, responsesReceived: 1)
@@ -160,19 +161,18 @@ public class JanusClient {
         return response
     }
     
-    /// Send command without expecting response (fire-and-forget)
-    public func sendCommandNoResponse(
-        _ command: String,
+    /// Send request without expecting response (fire-and-forget)
+    public func sendRequestNoResponse(
+        _ request: String,
         args: [String: AnyCodable]? = nil
     ) async throws {
-        // Generate command ID
-        let commandId = UUID().uuidString
+        // Generate request ID
+        let requestId = UUID().uuidString
         
-        // Create socket command (no replyTo field)
-        let janusCommand = JanusCommand(
-            id: commandId,
-            channelId: channelId,
-            command: command,
+        // Create socket request (no replyTo field)
+        let janusRequest = JanusRequest(
+            id: requestId,
+            request: request,
             replyTo: nil,
             args: args,
             timeout: nil
@@ -181,17 +181,27 @@ public class JanusClient {
         // Ensure manifest is loaded if validation is enabled (lazy loading like Go)
         try await ensureManifestLoaded()
         
-        // Validate command against Manifest 
-        if enableValidation, let spec = manifest {
-            try validateCommandAgainstSpec(spec, command: janusCommand)
+        // Validate request against Manifest 
+        if enableValidation {
+            // Built-in requests skip manifest validation
+            if isBuiltinRequest(janusRequest.request) {
+                // Built-in requests are always valid, no manifest validation needed
+                try validateBasicRequestStructure(janusRequest)
+            } else if let manifest = manifest {
+                // Non-built-in requests need manifest validation
+                try validateRequestAgainstManifest(manifest, request: janusRequest)
+            } else {
+                // No manifest available, do basic validation only
+                try validateBasicRequestStructure(janusRequest)
+            }
         }
         
-        // Serialize command
+        // Serialize request
         let encoder = JSONEncoder()
-        let commandData = try encoder.encode(janusCommand)
+        let requestData = try encoder.encode(janusRequest)
         
         // Send datagram without waiting for response
-        try await coreClient.sendDatagramNoResponse(commandData)
+        try await coreClient.sendDatagramNoResponse(requestData)
     }
     
     /// Test connectivity to the server
@@ -203,8 +213,7 @@ public class JanusClient {
     
     /// Validate constructor inputs (matching Go/Rust implementations)
     private static func validateConstructorInputs(
-        socketPath: String,
-        channelId: String
+        socketPath: String
     ) throws {
         // Validate socket path
         guard !socketPath.isEmpty else {
@@ -220,177 +229,126 @@ public class JanusClient {
             throw JSONRPCError.create(code: .invalidParams, details: "Socket path contains path traversal sequence")
         }
         
-        // Validate channel ID
-        guard !channelId.isEmpty else {
-            throw JSONRPCError.create(code: .invalidParams, details: "Channel ID cannot be empty")
-        }
-        
-        // Channel ID length limit (matching other implementations)
-        if channelId.count > 256 {
-            throw JSONRPCError.create(code: .invalidParams, details: "Channel ID exceeds maximum length of 256 characters")
-        }
-        
-        // Security validation for channel ID (matching Go implementation)
-        let forbiddenChars = CharacterSet(charactersIn: "\0;`$|&\n\r\t<>\"'/")
-        if channelId.rangeOfCharacter(from: forbiddenChars) != nil {
-            throw JSONRPCError.create(code: .invalidParams, details: "Channel ID contains forbidden characters")
-        }
-        
-        if channelId.contains("..") {
-            throw JSONRPCError.create(code: .invalidParams, details: "Channel ID contains path traversal sequence")
-        }
-        
-        // XSS pattern detection
-        let lowercaseChannelId = channelId.lowercased()
-        if lowercaseChannelId.contains("script") || lowercaseChannelId.contains("javascript") {
-            throw JSONRPCError.create(code: .invalidParams, details: "Channel ID contains potential XSS patterns")
-        }
+        // Channel validation removed - channels no longer part of protocol
     }
     
-    private func validateBasicCommandStructure(_ command: JanusCommand) throws {
+    private func validateBasicRequestStructure(_ request: JanusRequest) throws {
         // Basic validation without manifest
         
-        // Validate command name
-        guard !command.command.isEmpty else {
-            throw JSONRPCError.create(code: .invalidParams, details: "Command name cannot be empty")
+        // Validate request name
+        guard !request.request.isEmpty else {
+            throw JSONRPCError.create(code: .invalidParams, details: "Request name cannot be empty")
         }
         
-        // Check for obviously invalid command names
-        if command.command.contains(" ") || command.command.contains("\n") || command.command.contains("\t") {
-            throw JSONRPCError.create(code: .invalidParams, details: "Invalid command name format")
+        // Check for obviously invalid request names
+        if request.request.contains(" ") || request.request.contains("\n") || request.request.contains("\t") {
+            throw JSONRPCError.create(code: .invalidParams, details: "Invalid request name format")
         }
         
-        // For built-in commands, we can validate
-        let reservedCommands = ["ping", "echo", "get_info", "validate", "slow_process", "spec"]
-        if reservedCommands.contains(command.command) {
-            // Built-in commands don't need argument validation here
+        // For built-in requests, we can validate
+        let reservedRequests = ["ping", "echo", "get_info", "validate", "slow_process", "manifest"]
+        if reservedRequests.contains(request.request) {
+            // Built-in requests don't need argument validation here
             return
         }
         
-        // For non-reserved commands like "quickCommand", we can't validate existence without manifest
-        // But we can still proceed - the actual command execution will fail if the command doesn't exist
-        // This allows tests to check for parameter validation errors on potentially valid commands
+        // For non-reserved requests like "quickRequest", we can't validate existence without manifest
+        // But we can still proceed - the actual request execution will fail if the request doesn't exist
+        // This allows tests to check for parameter validation errors on potentially valid requests
     }
     
-    private func validateCommandAgainstSpec(_ spec: Manifest, command: JanusCommand) throws {
-        // Check if command is reserved (built-in commands should never be in Manifests)
-        if isBuiltinCommand(command.command) {
-            throw JSONRPCError.create(code: .manifestValidationError, details: "Command '\(command.command)' is reserved and cannot be used from Manifest")
+    private func validateRequestAgainstManifest(_ manifest: Manifest, request: JanusRequest) throws {
+        // Check if request is reserved (built-in requests should never be in Manifests)
+        if isBuiltinRequest(request.request) {
+            throw JSONRPCError.create(code: .manifestValidationError, details: "Request '\(request.request)' is reserved and cannot be used from Manifest")
         }
         
-        // Check if channel exists
-        guard let channel = spec.channels[command.channelId] else {
-            throw JSONRPCError.create(code: .validationFailed, details: "Channel \(command.channelId) not found in Manifest")
-        }
-        
-        // Check if command exists in channel
-        guard channel.commands.keys.contains(command.command) else {
-            throw JSONRPCError.create(code: .methodNotFound, details: "Unknown command: \(command.command)")
-        }
-        
-        // Validate command arguments
-        if let commandSpec = channel.commands[command.command],
-           let specArgs = commandSpec.args {
-            
-            let args = command.args ?? [:]  // Use empty dict if no args provided
-            
-            // Check for required arguments
-            for (argName, argSpec) in specArgs {
-                if argSpec.required && args[argName] == nil {
-                    throw JSONRPCError.create(code: .invalidParams, details: "Missing required argument: \(argName)")
-                }
-            }
-        }
+        // Channel-based validation removed - server-side validation only
+        // No client-side manifest validation since channels are removed
     }
     
     // MARK: - Public Properties
-    
-    public var channelIdValue: String {
-        return channelId
-    }
     
     public var socketPathValue: String {
         return socketPath
     }
     
     
-    /// Send a ping command and return success/failure
+    /// Send a ping request and return success/failure
     /// Convenience method for testing connectivity with a simple ping
     public func ping() async -> Bool {
         do {
-            let response = try await sendCommand("ping", args: nil, timeout: 10.0)
+            let response = try await sendRequest("ping", args: nil, timeout: 10.0)
             return response.success
         } catch {
             return false
         }
     }
     
-    // MARK: - Built-in Command Support
+    // MARK: - Built-in Request Support
     
-    /// Check if command is a built-in command that should bypass API validation
-    private func isBuiltinCommand(_ command: String) -> Bool {
-        let builtinCommands = ["ping", "echo", "get_info", "validate", "slow_process", "spec"]
-        return builtinCommands.contains(command)
+    /// Check if request is a built-in request that should bypass API validation
+    private func isBuiltinRequest(_ request: String) -> Bool {
+        let builtinRequests = ["ping", "echo", "get_info", "validate", "slow_process", "manifest"]
+        return builtinRequests.contains(request)
     }
     
-    /// Send built-in command (used during initialization for spec fetching)
-    private func sendBuiltinCommand(
-        _ command: String,
+    /// Send built-in request (used during initialization for manifest fetching)
+    private func sendBuiltinRequest(
+        _ request: String,
         args: [String: AnyCodable]? = nil,
         timeout: TimeInterval
     ) async throws -> JanusResponse {
-        // Generate command ID and response socket path
-        let commandId = UUID().uuidString
+        // Generate request ID and response socket path
+        let requestId = UUID().uuidString
         let responseSocketPath = coreClient.generateResponseSocketPath()
         
-        // Create socket command for built-in command
-        let janusCommand = JanusCommand(
-            id: commandId,
-            channelId: channelId,
-            command: command,
+        // Create socket request for built-in request
+        let janusRequest = JanusRequest(
+            id: requestId,
+            request: request,
             replyTo: responseSocketPath,
             args: args,
             timeout: timeout
         )
         
-        // Serialize command
+        // Serialize request
         let encoder = JSONEncoder()
-        let commandData = try encoder.encode(janusCommand)
+        let requestData = try encoder.encode(janusRequest)
         
         // Send datagram and wait for response
-        let responseData = try await coreClient.sendDatagram(commandData, responseSocketPath: responseSocketPath)
+        let responseData = try await coreClient.sendDatagram(requestData, responseSocketPath: responseSocketPath)
         
         // Deserialize response
         let decoder = JSONDecoder()
         let response = try decoder.decode(JanusResponse.self, from: responseData)
         
         // Validate response correlation
-        guard response.commandId == commandId else {
-            throw JSONRPCError.create(code: .responseTrackingError, details: "Response correlation mismatch: expected \\(commandId), got \\(response.commandId)")
+        guard response.requestId == requestId else {
+            throw JSONRPCError.create(code: .responseTrackingError, details: "Response correlation mismatch: expected \\(requestId), got \\(response.requestId)")
         }
         
-        guard response.channelId == channelId else {
-            throw JSONRPCError.create(code: .responseTrackingError, details: "Channel mismatch: expected \\(channelId), got \\(response.channelId)")
-        }
+        // PRIME DIRECTIVE: channelId is not part of JanusResponse format
+        // Response validation is based on request_id correlation only
         
         return response
     }
     
     // MARK: - Advanced Client Features
     
-    /// Send command with response correlation (async with Promise-like API)
-    public func sendCommandAsync(
-        _ command: String,
+    /// Send request with response correlation (async with Promise-like API)
+    public func sendRequestAsync(
+        _ request: String,
         args: [String: AnyCodable]? = nil,
         timeout: TimeInterval? = nil
     ) async throws -> JanusResponse {
         return try await withCheckedThrowingContinuation { continuation in
-            let commandId = UUID().uuidString
+            let requestId = UUID().uuidString
             let effectiveTimeout = timeout ?? defaultTimeout
             
             do {
-                try responseTracker.registerCommand(
-                    commandId: commandId,
+                try responseTracker.registerRequest(
+                    requestId: requestId,
                     timeout: effectiveTimeout,
                     resolve: { response in
                         continuation.resume(returning: response)
@@ -400,13 +358,13 @@ public class JanusClient {
                     }
                 )
                 
-                // Send the actual command
+                // Send the actual request
                 Task {
                     do {
-                        let response = try await sendCommand(command, args: args, timeout: effectiveTimeout)
-                        _ = responseTracker.resolveCommand(commandId: commandId, response: response)
+                        let response = try await sendRequest(request, args: args, timeout: effectiveTimeout)
+                        _ = responseTracker.resolveRequest(requestId: requestId, response: response)
                     } catch {
-                        _ = responseTracker.rejectCommand(commandId: commandId, error: error)
+                        _ = responseTracker.rejectRequest(requestId: requestId, error: error)
                     }
                 }
             } catch {
@@ -415,27 +373,27 @@ public class JanusClient {
         }
     }
     
-    /// Cancel a specific command by ID
-    public func cancelCommand(commandId: String) -> Bool {
-        return responseTracker.cancelCommand(commandId: commandId)
+    /// Cancel a manifestific request by ID
+    public func cancelRequest(requestId: String) -> Bool {
+        return responseTracker.cancelRequest(requestId: requestId)
     }
     
-    /// Cancel all pending commands
-    public func cancelAllCommands() -> Int {
-        return responseTracker.cancelAllCommands()
+    /// Cancel all pending requests
+    public func cancelAllRequests() -> Int {
+        return responseTracker.cancelAllRequests()
     }
     
-    /// Get pending command statistics
-    public func getCommandStatistics() -> CommandStatistics {
+    /// Get pending request statistics
+    public func getRequestStatistics() -> RequestStatistics {
         return responseTracker.getStatistics()
     }
     
-    /// Execute multiple commands in parallel
-    public func executeParallel(_ commands: [(command: String, args: [String: AnyCodable]?)]) async throws -> [JanusResponse] {
+    /// Execute multiple requests in parallel
+    public func executeParallel(_ requests: [(request: String, args: [String: AnyCodable]?)]) async throws -> [JanusResponse] {
         return try await withThrowingTaskGroup(of: JanusResponse.self) { group in
-            for (command, args) in commands {
+            for (request, args) in requests {
                 group.addTask {
-                    try await self.sendCommand(command, args: args)
+                    try await self.sendRequest(request, args: args)
                 }
             }
             
@@ -447,38 +405,20 @@ public class JanusClient {
         }
     }
     
-    /// Channel proxy for command execution with specific channel context
-    public func channelProxy(channelId: String) -> JanusChannelProxy {
-        return JanusChannelProxy(client: self, channelId: channelId)
-    }
     
     /// Add event handler to response tracker
     public func on(_ event: String, handler: @escaping (Any) -> Void) {
         responseTracker.on(event, handler: handler)
     }
     
-    // MARK: - Command Handler Registration
+    // MARK: - Request Handler Registration
     
-    /// Register a command handler with validation against Manifest
-    public func registerCommandHandler(_ command: String, handler: @escaping (JanusCommand) throws -> [String: AnyCodable]) throws {
-        // Validate that command exists in Manifest
-        guard let manifest = self.manifest else {
-            throw JSONRPCError.create(code: .validationFailed, details: "Cannot register handler: Manifest not loaded")
-        }
-        
-        // Check if command exists in the current channel
-        guard let channel = manifest.channels[channelId] else {
-            throw JSONRPCError.create(code: .validationFailed, details: "Channel \(channelId) not found in Manifest")
-        }
-        
-        guard channel.commands.keys.contains(command) else {
-            throw JSONRPCError.create(code: .validationFailed, details: "Command \(command) not found in channel \(channelId) specification")
-        }
-        
+    /// Register a request handler (no validation since channels removed)
+    public func registerRequestHandler(_ request: String, handler: @escaping (JanusRequest) throws -> [String: AnyCodable]) throws {
+        // Channel validation removed - handlers registered server-side only
         // In SOCK_DGRAM, we can't actually register handlers on the client side
-        // This method validates the command exists but doesn't store the handler
-        // (Handlers are registered on the server side)
-        print("✅ Command handler validation passed for: \(command)")
+        // This method exists for API compatibility
+        print("✅ Request handler registration (server-side only): \(request)")
     }
     
     // MARK: - Legacy Method Support
@@ -543,34 +483,34 @@ public class JanusClient {
     
     // MARK: - Automatic ID Management Methods (F0193-F0216)
     
-    /// Send command with handle - returns RequestHandle for tracking
+    /// Send request with handle - returns RequestHandle for tracking
     /// Hides UUID complexity from users while providing request lifecycle management
-    public func sendCommandWithHandle(
-        _ command: String,
+    public func sendRequestWithHandle(
+        _ request: String,
         args: [String: AnyCodable]? = nil,
         timeout: TimeInterval? = nil
     ) async throws -> (RequestHandle, Task<JanusResponse, Error>) {
         // Generate internal UUID (hidden from user)
-        let commandId = UUID().uuidString
+        let requestId = UUID().uuidString
         
         // Create request handle for user
-        let handle = RequestHandle(internalID: commandId, command: command, channel: channelId)
+        let handle = RequestHandle(internalID: requestId, request: request)
         
         // Register the request handle
         registryQueue.async(flags: .barrier) {
-            self.requestRegistry[commandId] = handle
+            self.requestRegistry[requestId] = handle
         }
         
-        // Create async task for command execution
+        // Create async task for request execution
         let task = Task<JanusResponse, Error> {
             defer {
                 // Clean up request handle when done
                 self.registryQueue.async(flags: .barrier) {
-                    self.requestRegistry.removeValue(forKey: commandId)
+                    self.requestRegistry.removeValue(forKey: requestId)
                 }
             }
             
-            return try await self.sendCommand(command, args: args, timeout: timeout)
+            return try await self.sendRequest(request, args: args, timeout: timeout)
         }
         
         return (handle, task)
@@ -618,48 +558,4 @@ public class JanusClient {
         }
     }
     
-    /// Cancel all pending requests
-    public func cancelAllRequests() -> Int {
-        return registryQueue.sync(flags: .barrier) {
-            let count = requestRegistry.count
-            
-            for handle in requestRegistry.values {
-                handle.markCancelled()
-            }
-            
-            requestRegistry.removeAll()
-            return count
-        }
-    }
-}
-
-/// Channel-specific command execution proxy
-public class JanusChannelProxy {
-    private let client: JanusClient
-    private let targetChannelId: String
-    
-    init(client: JanusClient, channelId: String) {
-        self.client = client
-        self.targetChannelId = channelId
-    }
-    
-    /// Send command through this channel proxy
-    public func sendCommand(
-        _ command: String,
-        args: [String: AnyCodable]? = nil,
-        timeout: TimeInterval? = nil
-    ) async throws -> JanusResponse {
-        // Create a temporary client with the target channel ID
-        let proxyClient = try await JanusClient(
-            socketPath: client.socketPathValue,
-            channelId: targetChannelId,
-            defaultTimeout: timeout ?? 30.0
-        )
-        
-        defer {
-            // Cleanup happens automatically in deinit
-        }
-        
-        return try await proxyClient.sendCommand(command, args: args, timeout: timeout)
-    }
 }

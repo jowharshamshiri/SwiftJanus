@@ -16,17 +16,17 @@ final class MessageFramingTests: XCTestCase {
     
     // MARK: - Encode Message Tests
     
-    func testEncodeMessage_Command() {
-        let command = JanusCommand(
+    func testEncodeMessage_Request() {
+        let request = JanusRequest(
             id: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
-            command: "ping",
+            request: "ping",
             args: nil,
             timeout: nil,
             timestamp: 1722248200
         )
         
-        let message = MessageFramingMessage.command(command)
+        let message = MessageFramingMessage.request(request)
         
         XCTAssertNoThrow(try {
             let encoded = try framing.encodeMessage(message)
@@ -43,7 +43,7 @@ final class MessageFramingTests: XCTestCase {
     
     func testEncodeMessage_Response() {
         let response = JanusResponse(
-            commandId: "550e8400-e29b-41d4-a716-446655440000",
+            requestId: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             success: true,
             result: AnyCodable(["pong": AnyCodable(true)]),
@@ -60,18 +60,18 @@ final class MessageFramingTests: XCTestCase {
     }
     
     func testEncodeMessage_TooLarge() {
-        // Create a command with very large args
+        // Create a request with very large args
         let largeData = String(repeating: "x", count: 20 * 1024 * 1024) // 20MB
-        let command = JanusCommand(
+        let request = JanusRequest(
             id: "test-id",
             channelId: "test-service",
-            command: "large",
+            request: "large",
             args: ["data": AnyCodable(largeData)],
             timeout: nil,
             timestamp: 1722248200
         )
         
-        let message = MessageFramingMessage.command(command)
+        let message = MessageFramingMessage.request(request)
         
         XCTAssertThrowsError(try framing.encodeMessage(message)) { error in
             // Validate error code instead of error message content
@@ -85,35 +85,35 @@ final class MessageFramingTests: XCTestCase {
     
     // MARK: - Decode Message Tests
     
-    func testDecodeMessage_Command() throws {
-        let originalCommand = JanusCommand(
+    func testDecodeMessage_Request() throws {
+        let originalRequest = JanusRequest(
             id: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
-            command: "ping",
+            request: "ping",
             args: nil,
             timeout: nil,
             timestamp: 1722248200
         )
         
-        let message = MessageFramingMessage.command(originalCommand)
+        let message = MessageFramingMessage.request(originalRequest)
         let encoded = try framing.encodeMessage(message)
         
         let result = try framing.decodeMessage(encoded)
         XCTAssertTrue(result.remainingBuffer.isEmpty)
         
-        guard case let .command(decodedCommand) = result.message else {
-            XCTFail("Expected command message")
+        guard case let .request(decodedRequest) = result.message else {
+            XCTFail("Expected request message")
             return
         }
         
-        XCTAssertEqual(decodedCommand.id, originalCommand.id)
-        XCTAssertEqual(decodedCommand.channelId, originalCommand.channelId)
-        XCTAssertEqual(decodedCommand.command, originalCommand.command)
+        XCTAssertEqual(decodedRequest.id, originalRequest.id)
+        XCTAssertEqual(decodedRequest.channelId, originalRequest.channelId)
+        XCTAssertEqual(decodedRequest.request, originalRequest.request)
     }
     
     func testDecodeMessage_Response() throws {
         let originalResponse = JanusResponse(
-            commandId: "550e8400-e29b-41d4-a716-446655440000",
+            requestId: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             success: true,
             result: AnyCodable(["pong": AnyCodable(true)]),
@@ -132,22 +132,22 @@ final class MessageFramingTests: XCTestCase {
             return
         }
         
-        XCTAssertEqual(decodedResponse.commandId, originalResponse.commandId)
+        XCTAssertEqual(decodedResponse.requestId, originalResponse.requestId)
         XCTAssertEqual(decodedResponse.success, originalResponse.success)
     }
     
     func testDecodeMessage_MultipleMessages() throws {
-        let command = JanusCommand(
+        let request = JanusRequest(
             id: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
-            command: "ping",
+            request: "ping",
             args: nil,
             timeout: nil,
             timestamp: 1722248200
         )
         
         let response = JanusResponse(
-            commandId: "550e8400-e29b-41d4-a716-446655440000",
+            requestId: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             success: true,
             result: AnyCodable(["pong": AnyCodable(true)]),
@@ -155,7 +155,7 @@ final class MessageFramingTests: XCTestCase {
             timestamp: 1722248201
         )
         
-        let encoded1 = try framing.encodeMessage(.command(command))
+        let encoded1 = try framing.encodeMessage(.request(request))
         let encoded2 = try framing.encodeMessage(.response(response))
         
         var combined = Data()
@@ -164,8 +164,8 @@ final class MessageFramingTests: XCTestCase {
         
         // Extract first message
         let result1 = try framing.decodeMessage(combined)
-        guard case .command = result1.message else {
-            XCTFail("First message should be a command")
+        guard case .request = result1.message else {
+            XCTFail("First message should be a request")
             return
         }
         
@@ -193,16 +193,16 @@ final class MessageFramingTests: XCTestCase {
     }
     
     func testDecodeMessage_IncompleteMessage() throws {
-        let command = JanusCommand(
+        let request = JanusRequest(
             id: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
-            command: "ping",
+            request: "ping",
             args: nil,
             timeout: nil,
             timestamp: 1722248200
         )
         
-        let encoded = try framing.encodeMessage(.command(command))
+        let encoded = try framing.encodeMessage(.request(request))
         let truncated = encoded.prefix(encoded.count - 10) // Remove last 10 bytes
         
         XCTAssertThrowsError(try framing.decodeMessage(truncated)) { error in
@@ -231,17 +231,17 @@ final class MessageFramingTests: XCTestCase {
     // MARK: - Extract Messages Tests
     
     func testExtractMessages_MultipleComplete() throws {
-        let command = JanusCommand(
+        let request = JanusRequest(
             id: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
-            command: "ping",
+            request: "ping",
             args: nil,
             timeout: nil,
             timestamp: 1722248200
         )
         
         let response = JanusResponse(
-            commandId: "550e8400-e29b-41d4-a716-446655440000",
+            requestId: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             success: true,
             result: AnyCodable(["pong": AnyCodable(true)]),
@@ -249,7 +249,7 @@ final class MessageFramingTests: XCTestCase {
             timestamp: 1722248201
         )
         
-        let encoded1 = try framing.encodeMessage(.command(command))
+        let encoded1 = try framing.encodeMessage(.request(request))
         let encoded2 = try framing.encodeMessage(.response(response))
         
         var combined = Data()
@@ -261,25 +261,25 @@ final class MessageFramingTests: XCTestCase {
         XCTAssertEqual(result.messages.count, 2)
         XCTAssertTrue(result.remainingBuffer.isEmpty)
         
-        guard case .command = result.messages[0],
+        guard case .request = result.messages[0],
               case .response = result.messages[1] else {
-            XCTFail("Expected command and response messages")
+            XCTFail("Expected request and response messages")
             return
         }
     }
     
     func testExtractMessages_PartialMessage() throws {
-        let command = JanusCommand(
+        let request = JanusRequest(
             id: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
-            command: "ping",
+            request: "ping",
             args: nil,
             timeout: nil,
             timestamp: 1722248200
         )
         
         let response = JanusResponse(
-            commandId: "550e8400-e29b-41d4-a716-446655440000",
+            requestId: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             success: true,
             result: AnyCodable(["pong": AnyCodable(true)]),
@@ -287,7 +287,7 @@ final class MessageFramingTests: XCTestCase {
             timestamp: 1722248201
         )
         
-        let encoded1 = try framing.encodeMessage(.command(command))
+        let encoded1 = try framing.encodeMessage(.request(request))
         let encoded2 = try framing.encodeMessage(.response(response))
         
         var combined = Data()
@@ -302,8 +302,8 @@ final class MessageFramingTests: XCTestCase {
         XCTAssertEqual(result.messages.count, 1)
         XCTAssertEqual(result.remainingBuffer.count, 10) // Partial second message
         
-        guard case .command = result.messages[0] else {
-            XCTFail("Expected command message")
+        guard case .request = result.messages[0] else {
+            XCTFail("Expected request message")
             return
         }
     }
@@ -327,16 +327,16 @@ final class MessageFramingTests: XCTestCase {
     // MARK: - Calculate Framed Size Tests
     
     func testCalculateFramedSize() throws {
-        let command = JanusCommand(
+        let request = JanusRequest(
             id: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
-            command: "ping",
+            request: "ping",
             args: nil,
             timeout: nil,
             timestamp: 1722248200
         )
         
-        let message = MessageFramingMessage.command(command)
+        let message = MessageFramingMessage.request(request)
         let size = try framing.calculateFramedSize(message)
         let encoded = try framing.encodeMessage(message)
         
@@ -346,16 +346,16 @@ final class MessageFramingTests: XCTestCase {
     // MARK: - Direct Message Tests
     
     func testEncodeDirectMessage() throws {
-        let command = JanusCommand(
+        let request = JanusRequest(
             id: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
-            command: "ping",
+            request: "ping",
             args: nil,
             timeout: nil,
             timestamp: 1722248200
         )
         
-        let message = MessageFramingMessage.command(command)
+        let message = MessageFramingMessage.request(request)
         let directEncoded = try framing.encodeDirectMessage(message)
         
         XCTAssertGreaterThan(directEncoded.count, 4)
@@ -366,47 +366,47 @@ final class MessageFramingTests: XCTestCase {
     }
     
     func testDecodeDirectMessage() throws {
-        let originalCommand = JanusCommand(
+        let originalRequest = JanusRequest(
             id: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
-            command: "ping",
+            request: "ping",
             args: nil,
             timeout: nil,
             timestamp: 1722248200
         )
         
-        let message = MessageFramingMessage.command(originalCommand)
+        let message = MessageFramingMessage.request(originalRequest)
         let encoded = try framing.encodeDirectMessage(message)
         
         let result = try framing.decodeDirectMessage(encoded)
         XCTAssertTrue(result.remainingBuffer.isEmpty)
         
-        guard case let .command(decodedCommand) = result.message else {
-            XCTFail("Expected command message")
+        guard case let .request(decodedRequest) = result.message else {
+            XCTFail("Expected request message")
             return
         }
         
-        XCTAssertEqual(decodedCommand.id, originalCommand.id)
-        XCTAssertEqual(decodedCommand.channelId, originalCommand.channelId)
-        XCTAssertEqual(decodedCommand.command, originalCommand.command)
+        XCTAssertEqual(decodedRequest.id, originalRequest.id)
+        XCTAssertEqual(decodedRequest.channelId, originalRequest.channelId)
+        XCTAssertEqual(decodedRequest.request, originalRequest.request)
     }
     
-    func testDirectRoundtripCommand() throws {
-        let originalCommand = JanusCommand(
+    func testDirectRoundtripRequest() throws {
+        let originalRequest = JanusRequest(
             id: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
-            command: "ping",
+            request: "ping",
             args: nil,
             timeout: nil,
             timestamp: 1722248200
         )
         
-        let message = MessageFramingMessage.command(originalCommand)
+        let message = MessageFramingMessage.request(originalRequest)
         let encoded = try framing.encodeDirectMessage(message)
         let result = try framing.decodeDirectMessage(encoded)
         
-        guard case let .command(decodedCommand) = result.message else {
-            XCTFail("Expected command message")
+        guard case let .request(decodedRequest) = result.message else {
+            XCTFail("Expected request message")
             return
         }
         
@@ -414,15 +414,15 @@ final class MessageFramingTests: XCTestCase {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         
-        let originalJSON = try encoder.encode(originalCommand)
-        let decodedJSON = try encoder.encode(decodedCommand)
+        let originalJSON = try encoder.encode(originalRequest)
+        let decodedJSON = try encoder.encode(decodedRequest)
         
         XCTAssertEqual(originalJSON, decodedJSON)
     }
     
     func testDirectRoundtripResponse() throws {
         let originalResponse = JanusResponse(
-            commandId: "550e8400-e29b-41d4-a716-446655440000",
+            requestId: "550e8400-e29b-41d4-a716-446655440000",
             channelId: "test-service",
             success: true,
             result: AnyCodable(["pong": AnyCodable(true)]),
@@ -440,7 +440,7 @@ final class MessageFramingTests: XCTestCase {
         }
         
         // Compare key fields for equality (JSON comparison more complex for responses with Any types)
-        XCTAssertEqual(decodedResponse.commandId, originalResponse.commandId)
+        XCTAssertEqual(decodedResponse.requestId, originalResponse.requestId)
         XCTAssertEqual(decodedResponse.channelId, originalResponse.channelId)
         XCTAssertEqual(decodedResponse.success, originalResponse.success)
         XCTAssertEqual(decodedResponse.timestamp, originalResponse.timestamp)

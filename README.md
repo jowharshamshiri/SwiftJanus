@@ -8,7 +8,7 @@ A production-ready Swift library for Unix domain socket communication with **SOC
 - **Automatic ID Management**: RequestHandle system hides UUID complexity from users
 - **Native Swift Async**: Swift async/await patterns for non-blocking operations
 - **Cross-Language Compatibility**: Perfect compatibility with Go, Rust, and TypeScript implementations
-- **Dynamic Specification**: Server-provided Manifests with auto-fetch validation
+- **Dynamic Manifest**: Server-provided Manifests with auto-fetch validation
 - **Security Framework**: 27 comprehensive security mechanisms and attack prevention
 - **JSON-RPC 2.0 Compliance**: Standardized error codes and response format
 - **Type Safety**: Swift's type system with Codable integration
@@ -41,11 +41,11 @@ dependencies: [
 
 ## Usage
 
-### API Specification (Manifest)
+### API Manifest (Manifest)
 
 Before creating servers or clients, you need a Manifest file defining your API:
 
-**my-api-spec.json:**
+**my-api-manifest.json:**
 ```json
 {
   "name": "My Application API",
@@ -53,7 +53,7 @@ Before creating servers or clients, you need a Manifest file defining your API:
   "description": "Example API for demonstration",
   "channels": {
     "default": {
-      "commands": {
+      "requests": {
         "get_user": {
           "description": "Retrieve user information",
           "arguments": {
@@ -93,31 +93,31 @@ Before creating servers or clients, you need a Manifest file defining your API:
 }
 ```
 
-**Note**: Built-in commands (`ping`, `echo`, `get_info`, `validate`, `slow_process`, `spec`) are always available and cannot be overridden in Manifests.
+**Note**: Built-in requests (`ping`, `echo`, `get_info`, `validate`, `slow_process`, `manifest`) are always available and cannot be overridden in Manifests.
 
 ### Simple Client Example
 
 ```swift
 import SwiftJanus
 
-// Create client - specification is fetched automatically from server
+// Create client - manifest is fetched automatically from server
 let client = try await JanusClient(
     socketPath: "/tmp/my-server.sock",
     channelId: "default"
 )
 
-// Built-in commands (always available)
-let response = try await client.sendCommand("ping")
+// Built-in requests (always available)
+let response = try await client.sendRequest("ping")
 if response.success {
     print("Server ping: \(response.result?.value ?? "nil")")
 }
 
-// Custom command defined in Manifest (arguments validated automatically)
+// Custom request defined in Manifest (arguments validated automatically)
 let userArgs: [String: AnyCodable] = [
     "user_id": AnyCodable("user123")
 ]
 
-let userResponse = try await client.sendCommand("get_user", args: userArgs)
+let userResponse = try await client.sendRequest("get_user", args: userArgs)
 if userResponse.success {
     print("User data: \(userResponse.result?.value ?? "nil")")
 } else {
@@ -139,14 +139,14 @@ let args: [String: AnyCodable] = [
     "data": AnyCodable("processing_task")
 ]
 
-// Send command with RequestHandle for tracking
-let (handle, responseTask) = try await client.sendCommandWithHandle(
+// Send request with RequestHandle for tracking
+let (handle, responseTask) = try await client.sendRequestWithHandle(
     "process_data",
     args: args,
     timeout: 30.0
 )
 
-print("Request started: \(handle.getCommand()) on channel \(handle.getChannel())")
+print("Request started: \(handle.getRequest()) on channel \(handle.getChannel())")
 
 // Can check status or cancel if needed
 if handle.isCancelled() {
@@ -174,10 +174,10 @@ import SwiftJanus
 @main
 struct ServerApp {
     static func main() async throws {
-        // Load API specification from Manifest file
-        let server = try JanusServer.fromManifestFile("my-api-spec.json")
+        // Load API manifest from Manifest file
+        let server = try JanusServer.fromManifestFile("my-api-manifest.json")
         
-        // Register handlers for commands defined in the Manifest
+        // Register handlers for requests defined in the Manifest
         server.registerHandler("get_user") { cmd in
             guard let args = cmd.args,
                   let userId = args["user_id"] as? String else {
@@ -240,41 +240,41 @@ import SwiftJanus
 @main
 struct ClientApp {
     static func main() async throws {
-        // Create client - specification is fetched automatically from server
+        // Create client - manifest is fetched automatically from server
         let client = try await JanusClient(
             socketPath: "/tmp/my-server.sock",
             channelId: "default"
         )
         
-        // Built-in commands (always available)
-        let response = try await client.sendCommand("ping")
+        // Built-in requests (always available)
+        let response = try await client.sendRequest("ping")
         if response.success {
             print("Server ping: \(response.result?.value ?? "nil")")
         }
         
-        // Custom command defined in Manifest (arguments validated automatically)
+        // Custom request defined in Manifest (arguments validated automatically)
         let userArgs: [String: AnyCodable] = [
             "user_id": AnyCodable("user123")
         ]
         
-        let userResponse = try await client.sendCommand("get_user", args: userArgs)
+        let userResponse = try await client.sendRequest("get_user", args: userArgs)
         if userResponse.success {
             print("User data: \(userResponse.result?.value ?? "nil")")
         } else {
             print("Error: \(userResponse.error?.message ?? "Unknown error")")
         }
         
-        // Fire-and-forget command
+        // Fire-and-forget request
         let logArgs: [String: AnyCodable] = [
             "level": AnyCodable("info"),
             "message": AnyCodable("User profile updated")
         ]
         
-        try await client.sendCommandNoResponse("log_event", args: logArgs)
+        try await client.sendRequestNoResponse("log_event", args: logArgs)
         
-        // Get server API specification
-        let specResponse = try await client.sendCommand("spec")
-        print("Server API spec: \(specResponse.result?.value ?? "nil")")
+        // Get server API manifest
+        let manifestResponse = try await client.sendRequest("manifest")
+        print("Server API manifest: \(manifestResponse.result?.value ?? "nil")")
         
         // Test connectivity
         if await client.ping() {
@@ -284,17 +284,17 @@ struct ClientApp {
 }
 ```
 
-### Fire-and-Forget Commands
+### Fire-and-Forget Requests
 
 ```swift
-// Send command without waiting for response
+// Send request without waiting for response
 let args: [String: AnyCodable] = [
     "event": AnyCodable("user_login"),
     "user_id": AnyCodable("12345")
 ]
 
 do {
-    try await client.sendCommandNoResponse("log_event", args: args)
+    try await client.sendRequestNoResponse("log_event", args: args)
     print("Event logged successfully")
 } catch {
     print("Failed to log event: \(error)")
@@ -309,7 +309,7 @@ let handles = client.getPendingRequests()
 print("Pending requests: \(handles.count)")
 
 for handle in handles {
-    print("Request: \(handle.getCommand()) on \(handle.getChannel()) (created: \(handle.getTimestamp()))")
+    print("Request: \(handle.getRequest()) on \(handle.getChannel()) (created: \(handle.getTimestamp()))")
     
     // Check status
     let status = client.getRequestStatus(handle)
@@ -345,12 +345,12 @@ let client = try await JanusClient(
 
 ```swift
 do {
-    let response = try await client.sendCommand("echo", args: args)
+    let response = try await client.sendRequest("echo", args: args)
     print("Success: \(response)")
 } catch let error as JSONRPCError {
     switch error.code {
     case JSONRPCErrorCode.methodNotFound:
-        print("Command not found: \(error.message)")
+        print("Request not found: \(error.message)")
     case JSONRPCErrorCode.invalidParams:
         print("Invalid parameters: \(error.message)")
     case JSONRPCErrorCode.internalError:
@@ -363,17 +363,17 @@ do {
 }
 ```
 
-### Fire-and-Forget Commands
+### Fire-and-Forget Requests
 
 ```swift
-// Send command without waiting for response
+// Send request without waiting for response
 let args: [String: AnyCodable] = [
     "level": AnyCodable("info"),
     "message": AnyCodable("User profile updated")
 ]
 
 do {
-    try await client.sendCommandNoResponse("log_event", args: args)
+    try await client.sendRequestNoResponse("log_event", args: args)
     print("Event logged successfully")
 } catch {
     print("Failed to log event: \(error)")
@@ -391,7 +391,7 @@ do {
 
 ### Input Validation
 
-- **Character Set Restrictions**: Channel and command names allow only alphanumeric, hyphens, and underscores
+- **Character Set Restrictions**: Channel and request names allow only alphanumeric, hyphens, and underscores
 - **Size Limits**: Configurable maximum sizes for arguments, messages, and names
 - **UTF-8 Validation**: All text data must be valid UTF-8
 - **JSON Structure Validation**: Messages must be well-formed JSON objects
@@ -400,8 +400,8 @@ do {
 
 - **Connection Limits**: Maximum concurrent connections per client
 - **Memory Limits**: Maximum message and argument sizes
-- **Handler Limits**: Maximum number of registered command handlers
-- **Pending Command Limits**: Maximum number of concurrent pending operations
+- **Handler Limits**: Maximum number of registered request handlers
+- **Pending Request Limits**: Maximum number of concurrent pending operations
 
 ### Message Security
 
@@ -415,11 +415,11 @@ do {
 - **Bilateral Timeouts**: Both caller and handler receive timeout notifications
 - **Automatic Cleanup**: Expired operations are automatically cleaned up
 - **Resource Recovery**: Timed-out operations release all associated resources
-- **Configurable Durations**: Per-command timeout specification
+- **Configurable Durations**: Per-request timeout manifest
 
 ### Attack Prevention
 
-- **Command Injection**: Input sanitization prevents command injection attacks
+- **Request Injection**: Input sanitization prevents request injection attacks
 - **Memory Exhaustion**: Resource limits prevent memory exhaustion attacks
 - **DoS Protection**: Rate limiting and resource caps prevent denial of service
 - **Data Corruption**: Message framing prevents data corruption and injection
@@ -452,7 +452,7 @@ The library includes **enterprise-grade test coverage** with **129 comprehensive
 # Run full test suite
 swift test
 
-# Run specific test category  
+# Run manifestific test category  
 swift test --filter SecurityTests
 swift test --filter ConcurrencyTests
 swift test --filter ProtocolTests
@@ -476,7 +476,7 @@ The main client interface providing:
 
 - **Thread-Safe Operations**: MainActor isolation with nonisolated getters for safe concurrent access
 - **Configuration Management**: Enterprise-grade security and resource configuration
-- **Command Lifecycle**: Registration, validation, execution, and cleanup
+- **Request Lifecycle**: Registration, validation, execution, and cleanup
 - **Error Handling**: Comprehensive error taxonomy with security context
 
 #### JanusClient
@@ -492,15 +492,15 @@ Low-level socket communication layer:
 
 Manifest processing:
 
-- **Format Support**: JSON and YAML specification parsing
-- **Validation Engine**: Command, argument, and response schema validation
+- **Format Support**: JSON and YAML manifest parsing
+- **Validation Engine**: Request, argument, and response schema validation
 - **Type System**: Rich type constraints and validation rules
 - **Model References**: Support for complex nested data structures
 
 ### Data Flow
 
 ```
-Client Request → Input Validation → Command Routing → Handler Execution → Response Validation → Secure Response
+Client Request → Input Validation → Request Routing → Handler Execution → Response Validation → Secure Response
 ```
 
 ## 📊 Performance & Scalability
@@ -511,9 +511,9 @@ Optimized for enterprise production use:
 
 - **Connection Pooling**: Reuses connections to reduce overhead by up to 80%
 - **Stateless Design**: No session state to manage or synchronize
-- **Concurrent Operations**: Handles 1000+ concurrent commands reliably
+- **Concurrent Operations**: Handles 1000+ concurrent requests reliably
 - **Memory Efficient**: Automatic cleanup prevents memory leaks
-- **Low Latency**: <1ms overhead for command processing
+- **Low Latency**: <1ms overhead for request processing
 - **Thread Safety**: Lock-free design with atomic operations
 
 ### Scalability Features
@@ -521,12 +521,12 @@ Optimized for enterprise production use:
 - **Resource Limits**: Configurable limits prevent resource exhaustion
 - **Connection Limits**: Per-client connection pool management
 - **Message Size Limits**: Configurable maximum payload sizes
-- **Handler Limits**: Maximum concurrent command handlers
+- **Handler Limits**: Maximum concurrent request handlers
 - **Pending Operation Limits**: Queue management for high-load scenarios
 
 ### Production Benchmarks
 
-- **Throughput**: 10,000+ commands/second on modern hardware
+- **Throughput**: 10,000+ requests/second on modern hardware
 - **Memory Usage**: <10MB base memory footprint
 - **Connection Overhead**: <100KB per active connection
 - **Timeout Precision**: ±10ms timeout accuracy
@@ -542,11 +542,11 @@ let financialConfig = JanusClientConfig(
     maxConcurrentConnections: 10,
     maxMessageSize: 1024 * 1024, // 1MB
     connectionTimeout: 5.0,
-    maxPendingCommands: 50,
-    maxCommandHandlers: 20,
+    maxPendingRequests: 50,
+    maxRequestHandlers: 20,
     enableResourceMonitoring: true,
     maxChannelNameLength: 32,
-    maxCommandNameLength: 32,
+    maxRequestNameLength: 32,
     maxArgsDataSize: 512 * 1024 // 512KB
 )
 
@@ -555,11 +555,11 @@ let dataPipelineConfig = JanusClientConfig(
     maxConcurrentConnections: 200,
     maxMessageSize: 50 * 1024 * 1024, // 50MB
     connectionTimeout: 60.0,
-    maxPendingCommands: 2000,
-    maxCommandHandlers: 1000,
+    maxPendingRequests: 2000,
+    maxRequestHandlers: 1000,
     enableResourceMonitoring: true,
     maxChannelNameLength: 128,
-    maxCommandNameLength: 128,
+    maxRequestNameLength: 128,
     maxArgsDataSize: 25 * 1024 * 1024 // 25MB
 )
 ```
@@ -568,9 +568,9 @@ let dataPipelineConfig = JanusClientConfig(
 
 ```swift
 // Comprehensive error handling
-func handleCommand() async {
+func handleRequest() async {
     do {
-        let response = try await client.sendCommand("processData", args: data)
+        let response = try await client.sendRequest("processData", args: data)
         // Handle success
     } catch JanusError.securityViolation(let reason) {
         // Log security incident and alert

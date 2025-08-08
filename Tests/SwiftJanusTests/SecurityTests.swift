@@ -17,26 +17,26 @@ final class SecurityTests: XCTestCase {
         try? FileManager.default.removeItem(atPath: testSocketPath)
         
         // Create test Manifest
-        let argSpec = ArgumentSpec(
+        let argManifest = ArgumentManifest(
             type: .string,
             required: true,
-            validation: ValidationSpec(maxLength: 1000)
+            validation: ValidationManifest(maxLength: 1000)
         )
         
-        let commandSpec = CommandSpec(
-            description: "Test command",
-            args: ["data": argSpec],
-            response: ResponseSpec(type: .object)
+        let requestManifest = RequestManifest(
+            description: "Test request",
+            args: ["data": argManifest],
+            response: ResponseManifest(type: .object)
         )
         
-        let channelSpec = ChannelSpec(
+        let channelManifest = ChannelManifest(
             description: "Test channel",
-            commands: ["testCommand": commandSpec]
+            requests: ["testRequest": requestManifest]
         )
         
         testManifest = Manifest(
             version: "1.0.0",
-            channels: ["testChannel": channelSpec]
+            channels: ["testChannel": channelManifest]
         )
     }
     
@@ -65,7 +65,6 @@ final class SecurityTests: XCTestCase {
             do {
                 _ = try await JanusClient(
                     socketPath: maliciousPath,
-                    channelId: "testChannel"
                 )
                 XCTFail("Path traversal attack should be blocked: \(maliciousPath)")
             } catch let error as JSONRPCError {
@@ -92,7 +91,6 @@ final class SecurityTests: XCTestCase {
             do {
                 _ = try await JanusClient(
                     socketPath: invalidPath,
-                    channelId: "testChannel"
                 )
                 XCTFail("Null byte in path should be rejected: \(invalidPath.debugDescription)")
             } catch {
@@ -113,7 +111,6 @@ final class SecurityTests: XCTestCase {
         do {
             _ = try await JanusClient(
                 socketPath: longPath,
-                channelId: "testChannel"
             )
         } catch {
             // Expected to fail due to system limitations
@@ -126,8 +123,8 @@ final class SecurityTests: XCTestCase {
     func testChannelIdInjectionAttacks() async {
         let maliciousChannelIds = [
             "channel'; DROP TABLE users; --",    // SQL injection attempt
-            "channel$(rm -rf /)",                // Command injection attempt
-            "channel`rm -rf /`",                 // Command injection with backticks
+            "channel$(rm -rf /)",                // Request injection attempt
+            "channel`rm -rf /`",                 // Request injection with backticks
             "channel\"; cat /etc/passwd; \"",    // Shell injection
             "channel\0admin",                    // Null byte injection
             "channel\n\rEXIT",                   // Line termination injection
@@ -152,10 +149,9 @@ final class SecurityTests: XCTestCase {
         }
     }
     
-    func testCommandInjectionInArguments() async throws {
+    func testRequestInjectionInArguments() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         let maliciousArguments = [
@@ -172,8 +168,8 @@ final class SecurityTests: XCTestCase {
         
         for maliciousArg in maliciousArguments {
             do {
-                _ = try await client.sendCommand(
-                    "testCommand",
+                _ = try await client.sendRequest(
+                    "testRequest",
                     args: ["data": AnyCodable(maliciousArg)]
                 )
                 // If no connection error, the validation should still work
@@ -202,7 +198,6 @@ final class SecurityTests: XCTestCase {
     func testMalformedJSONAttacks() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         // Test that the client's message validation works properly
@@ -240,7 +235,6 @@ final class SecurityTests: XCTestCase {
     func testUnicodeNormalizationAttacks() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         // Unicode normalization attacks
@@ -256,8 +250,8 @@ final class SecurityTests: XCTestCase {
         
         for unicodeAttack in unicodeAttacks {
             do {
-                _ = try await client.sendCommand(
-                    "testCommand",
+                _ = try await client.sendRequest(
+                    "testRequest",
                     args: ["data": AnyCodable(unicodeAttack)]
                 )
             } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
@@ -274,7 +268,6 @@ final class SecurityTests: XCTestCase {
     func testLargePayloadAttacks() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         // Test various large payload sizes
@@ -289,8 +282,8 @@ final class SecurityTests: XCTestCase {
             let largeData = String(repeating: "A", count: size)
             
             do {
-                _ = try await client.sendCommand(
-                    "testCommand",
+                _ = try await client.sendRequest(
+                    "testRequest",
                     args: ["data": AnyCodable(largeData)]
                 )
             } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
@@ -315,7 +308,6 @@ final class SecurityTests: XCTestCase {
     func testRepeatedLargePayloadAttacks() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         // Test rapid repeated large payloads (DoS attempt)
@@ -323,8 +315,8 @@ final class SecurityTests: XCTestCase {
         
         for i in 0..<10 {
             do {
-                _ = try await client.sendCommand(
-                    "testCommand",
+                _ = try await client.sendRequest(
+                    "testRequest",
                     args: ["data": AnyCodable(mediumData), "index": AnyCodable(i)]
                 )
             } catch let error as JSONRPCError where error.code == JSONRPCErrorCode.serverError.rawValue {
@@ -341,7 +333,6 @@ final class SecurityTests: XCTestCase {
         // SOCK_DGRAM doesn't use connection pools - each operation is independent
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         // Try to exhaust the connection pool
@@ -349,8 +340,8 @@ final class SecurityTests: XCTestCase {
             for i in 0..<20 { // More than the limit
                 group.addTask {
                     do {
-                        _ = try await client.sendCommand(
-                            "testCommand",
+                        _ = try await client.sendRequest(
+                            "testRequest",
                             args: ["data": AnyCodable("test\(i)")]
                         )
                     } catch {
@@ -366,7 +357,6 @@ final class SecurityTests: XCTestCase {
     func testRapidConnectionAttempts() async throws {
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         // Rapid connection attempts (potential DoS)
@@ -374,8 +364,8 @@ final class SecurityTests: XCTestCase {
             for i in 0..<100 {
                 group.addTask {
                     do {
-                        _ = try await client.sendCommand(
-                            "testCommand",
+                        _ = try await client.sendRequest(
+                            "testRequest",
                             args: ["data": AnyCodable("rapid\(i)")]
                         )
                     } catch {
@@ -393,7 +383,6 @@ final class SecurityTests: XCTestCase {
         // SOCK_DGRAM uses internal default configuration
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
         // Configuration values are internal to the SOCK_DGRAM implementation
@@ -407,7 +396,6 @@ final class SecurityTests: XCTestCase {
         do {
             _ = try await JanusClient(
                 socketPath: testSocketPath,
-                channelId: "testChannel"
             )
             // If accepted, it should work without causing issues
         } catch {
@@ -421,12 +409,11 @@ final class SecurityTests: XCTestCase {
         // Test attempts to bypass argument validation
         let client = try await JanusClient(
             socketPath: testSocketPath,
-            channelId: "testChannel"
         )
         
-        // Command validation happens at send time, not handler registration time
+        // Request validation happens at send time, not handler registration time
         
         // Resource limits would be enforced server-side, not on client handler registration
-        // Client-side security focuses on command validation and argument sanitization
+        // Client-side security focuses on request validation and argument sanitization
     }
 }

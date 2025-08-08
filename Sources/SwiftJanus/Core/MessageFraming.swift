@@ -2,7 +2,7 @@ import Foundation
 
 /// Socket message envelope for framing
 public struct SocketMessageEnvelope: Codable, Equatable {
-    public let type: String      // "command" or "response"
+    public let type: String      // "request" or "response"
     public let payload: String   // JSON payload as string
     
     public init(type: String, payload: String) {
@@ -25,8 +25,8 @@ public class MessageFraming {
         let payloadData: Data
         
         switch message {
-        case .command(let cmd):
-            messageType = "command"
+        case .request(let cmd):
+            messageType = "request"
             payloadData = try JSONEncoder().encode(cmd)
         case .response(let resp):
             messageType = "response"
@@ -123,7 +123,7 @@ public class MessageFraming {
             )
         }
         
-        if envelope.type != "command" && envelope.type != "response" {
+        if envelope.type != "request" && envelope.type != "response" {
             throw JSONRPCError.create(
                 code: .messageFramingError,
                 details: "Invalid message type: \(envelope.type)"
@@ -134,15 +134,15 @@ public class MessageFraming {
         let payloadData = envelope.payload.data(using: .utf8) ?? Data()
         let message: MessageFramingMessage
         
-        if envelope.type == "command" {
+        if envelope.type == "request" {
             do {
-                let cmd = try JSONDecoder().decode(JanusCommand.self, from: payloadData)
-                try validateCommandStructure(cmd)
-                message = .command(cmd)
+                let cmd = try JSONDecoder().decode(JanusRequest.self, from: payloadData)
+                try validateRequestStructure(cmd)
+                message = .request(cmd)
             } catch {
                 throw JSONRPCError.create(
                     code: .messageFramingError,
-                    details: "Failed to parse command payload JSON: \(error.localizedDescription)"
+                    details: "Failed to parse request payload JSON: \(error.localizedDescription)"
                 )
             }
         } else {
@@ -195,7 +195,7 @@ public class MessageFraming {
         // Serialize message to JSON
         let messageData: Data
         switch message {
-        case .command(let cmd):
+        case .request(let cmd):
             messageData = try JSONEncoder().encode(cmd)
         case .response(let resp):
             messageData = try JSONEncoder().encode(resp)
@@ -260,17 +260,17 @@ public class MessageFraming {
         
         // Determine message type and parse accordingly
         let message: MessageFramingMessage
-        if rawValue["command"] != nil {
+        if rawValue["request"] != nil {
             do {
-                let cmd = try JSONDecoder().decode(JanusCommand.self, from: messageBuffer)
-                message = .command(cmd)
+                let cmd = try JSONDecoder().decode(JanusRequest.self, from: messageBuffer)
+                message = .request(cmd)
             } catch {
                 throw JSONRPCError.create(
                     code: .messageFramingError,
-                    details: "Failed to parse command: \(error.localizedDescription)"
+                    details: "Failed to parse request: \(error.localizedDescription)"
                 )
             }
-        } else if rawValue["commandId"] != nil {
+        } else if rawValue["requestId"] != nil {
             do {
                 let resp = try JSONDecoder().decode(JanusResponse.self, from: messageBuffer)
                 message = .response(resp)
@@ -292,61 +292,50 @@ public class MessageFraming {
     
     // MARK: - Private Validation Methods
     
-    private func validateCommandStructure(_ cmd: JanusCommand) throws {
+    private func validateRequestStructure(_ cmd: JanusRequest) throws {
         if cmd.id.isEmpty {
             throw JSONRPCError.create(
                 code: .messageFramingError,
-                details: "Command missing required string field: id"
+                details: "Request missing required string field: id"
             )
         }
-        if cmd.channelId.isEmpty {
+        // Channel validation removed - channels no longer part of protocol
+        if cmd.request.isEmpty {
             throw JSONRPCError.create(
                 code: .messageFramingError,
-                details: "Command missing required string field: channelId"
-            )
-        }
-        if cmd.command.isEmpty {
-            throw JSONRPCError.create(
-                code: .messageFramingError,
-                details: "Command missing required string field: command"
+                details: "Request missing required string field: request"
             )
         }
     }
     
     private func validateResponseStructure(_ resp: JanusResponse) throws {
-        if resp.commandId.isEmpty {
+        if resp.requestId.isEmpty {
             throw JSONRPCError.create(
                 code: .messageFramingError,
-                details: "Response missing required field: commandId"
+                details: "Response missing required field: requestId"
             )
         }
-        if resp.channelId.isEmpty {
-            throw JSONRPCError.create(
-                code: .messageFramingError,
-                details: "Response missing required field: channelId"
-            )
-        }
+        // PRIME DIRECTIVE: channelId is not part of JanusResponse format
     }
 }
 
 /// Message enum for framing operations
 public enum MessageFramingMessage: Equatable {
-    case command(JanusCommand)
+    case request(JanusRequest)
     case response(JanusResponse)
     
     public static func == (lhs: MessageFramingMessage, rhs: MessageFramingMessage) -> Bool {
         switch (lhs, rhs) {
-        case (.command(let lhsCmd), .command(let rhsCmd)):
+        case (.request(let lhsCmd), .request(let rhsCmd)):
             return lhsCmd.id == rhsCmd.id &&
-                   lhsCmd.channelId == rhsCmd.channelId &&
-                   lhsCmd.command == rhsCmd.command &&
+                   // lhsCmd.channelId == rhsCmd.channelId && // Channels removed
+                   lhsCmd.request == rhsCmd.request &&
                    lhsCmd.replyTo == rhsCmd.replyTo &&
                    lhsCmd.timeout == rhsCmd.timeout &&
                    lhsCmd.timestamp == rhsCmd.timestamp
                    // Note: Skipping args comparison due to AnyCodable complexity
         case (.response(let lhsResp), .response(let rhsResp)):
-            return lhsResp.commandId == rhsResp.commandId &&
-                   lhsResp.channelId == rhsResp.channelId &&
+            return lhsResp.requestId == rhsResp.requestId &&
                    lhsResp.success == rhsResp.success &&
                    lhsResp.timestamp == rhsResp.timestamp
                    // Note: Skipping result and error comparison due to AnyCodable complexity

@@ -2,25 +2,25 @@ import XCTest
 @testable import SwiftJanus
 
 /**
- * Comprehensive CommandHandler Tests for Swift Janus Implementation
+ * Comprehensive RequestHandler Tests for Swift Janus Implementation
  * Tests all direct value response handlers, async patterns, error handling, and JSON-RPC error mapping
  * Matches Go and TypeScript test coverage for cross-platform parity
  */
-final class CommandHandlerTests: XCTestCase {
+final class RequestHandlerTests: XCTestCase {
     
     // MARK: - Helper Functions
     
-    private func createTestCommand(
+    private func createTestRequest(
         id: String = "test-id",
         channelId: String = "test-channel", 
-        command: String = "test-command",
+        request: String = "test-request",
         args: [String: AnyCodable] = [:],
         replyTo: String = "/tmp/test-reply.sock"
-    ) -> JanusCommand {
-        return JanusCommand(
+    ) -> JanusRequest {
+        return JanusRequest(
             id: id,
             channelId: channelId,
-            command: command,
+            request: request,
             replyTo: replyTo,
             args: args,
             timestamp: Date().timeIntervalSince1970
@@ -35,8 +35,8 @@ final class CommandHandlerTests: XCTestCase {
             return .success(true)
         }
         
-        let command = createTestCommand()
-        let result = await handler.handle(command)
+        let request = createTestRequest()
+        let result = await handler.handle(request)
         
         switch result {
         case .success(let value):
@@ -52,8 +52,8 @@ final class CommandHandlerTests: XCTestCase {
             return .success("test response")
         }
         
-        let command = createTestCommand()
-        let result = await handler.handle(command)
+        let request = createTestRequest()
+        let result = await handler.handle(request)
         
         switch result {
         case .success(let value):
@@ -69,8 +69,8 @@ final class CommandHandlerTests: XCTestCase {
             return .success(42)
         }
         
-        let command = createTestCommand()
-        let result = await handler.handle(command)
+        let request = createTestRequest()
+        let result = await handler.handle(request)
         
         switch result {
         case .success(let value):
@@ -86,8 +86,8 @@ final class CommandHandlerTests: XCTestCase {
             return .success(3.14)
         }
         
-        let command = createTestCommand()
-        let result = await handler.handle(command)
+        let request = createTestRequest()
+        let result = await handler.handle(request)
         
         switch result {
         case .success(let value):
@@ -104,8 +104,8 @@ final class CommandHandlerTests: XCTestCase {
             return .success(testArray)
         }
         
-        let command = createTestCommand()
-        let result = await handler.handle(command)
+        let request = createTestRequest()
+        let result = await handler.handle(request)
         
         switch result {
         case .success(let value):
@@ -127,8 +127,8 @@ final class CommandHandlerTests: XCTestCase {
             return .success(testUser)
         }
         
-        let command = createTestCommand()
-        let result = await handler.handle(command)
+        let request = createTestRequest()
+        let result = await handler.handle(request)
         
         switch result {
         case .success(let value):
@@ -147,9 +147,9 @@ final class CommandHandlerTests: XCTestCase {
             return .success(true)
         }
         
-        let command = createTestCommand()
+        let request = createTestRequest()
         let startTime = Date()
-        let result = await handler.handle(command)
+        let result = await handler.handle(request)
         let duration = Date().timeIntervalSince(startTime)
         
         // Verify it took some time (async execution)
@@ -170,9 +170,9 @@ final class CommandHandlerTests: XCTestCase {
             return .success("async response")
         }
         
-        let command = createTestCommand()
+        let request = createTestRequest()
         let startTime = Date()
-        let result = await handler.handle(command)
+        let result = await handler.handle(request)
         let duration = Date().timeIntervalSince(startTime)
         
         // Verify it took some time (async execution) 
@@ -193,8 +193,8 @@ final class CommandHandlerTests: XCTestCase {
             return .success(99)
         }
         
-        let command = createTestCommand()
-        let result = await handler.handle(command)
+        let request = createTestRequest()
+        let result = await handler.handle(request)
         
         switch result {
         case .success(let value):
@@ -211,8 +211,8 @@ final class CommandHandlerTests: XCTestCase {
             return .success(2.718)
         }
         
-        let command = createTestCommand()
-        let result = await handler.handle(command)
+        let request = createTestRequest()
+        let result = await handler.handle(request)
         
         switch result {
         case .success(let value):
@@ -230,8 +230,8 @@ final class CommandHandlerTests: XCTestCase {
             return .success(testArray)
         }
         
-        let command = createTestCommand()
-        let result = await handler.handle(command)
+        let request = createTestRequest()
+        let result = await handler.handle(request)
         
         switch result {
         case .success(let value):
@@ -260,8 +260,8 @@ final class CommandHandlerTests: XCTestCase {
             return .success(testResponse)
         }
         
-        let command = createTestCommand()
-        let result = await handler.handle(command)
+        let request = createTestRequest()
+        let result = await handler.handle(request)
         
         switch result {
         case .success(let value):
@@ -279,8 +279,8 @@ final class CommandHandlerTests: XCTestCase {
             return .failure(NSError(domain: "TestError", code: 1, userInfo: [NSLocalizedDescriptionKey: "sync handler error"]))
         }
         
-        let command = createTestCommand()
-        let result = await handler.handle(command)
+        let request = createTestRequest()
+        let result = await handler.handle(request)
         
         switch result {
         case .success:
@@ -297,8 +297,8 @@ final class CommandHandlerTests: XCTestCase {
             return .failure(NSError(domain: "TestError", code: 1, userInfo: [NSLocalizedDescriptionKey: "async handler error"]))
         }
         
-        let command = createTestCommand()
-        let result = await handler.handle(command)
+        let request = createTestRequest()
+        let result = await handler.handle(request)
         
         switch result {
         case .success:
@@ -319,8 +319,8 @@ final class CommandHandlerTests: XCTestCase {
             return .failure(jsonrpcError)
         }
         
-        let command = createTestCommand()
-        let result = await handler.handle(command)
+        let request = createTestRequest()
+        let result = await handler.handle(request)
         
         switch result {
         case .success:
@@ -342,19 +342,19 @@ final class CommandHandlerTests: XCTestCase {
         }
         
         do {
-            try await registry.registerHandler("test-command", handler: handler)
+            try await registry.registerHandler("test-request", handler: handler)
         } catch {
             XCTFail("Handler registration should not fail: \(error)")
             return
         }
         
         // Test handler existence
-        let hasHandler = await registry.hasHandler("test-command")
+        let hasHandler = await registry.hasHandler("test-request")
         XCTAssertTrue(hasHandler, "Registry should have registered handler")
         
         // Test handler execution
-        let command = createTestCommand(command: "test-command")
-        let result = await registry.executeHandler("test-command", command)
+        let request = createTestRequest(request: "test-request")
+        let result = await registry.executeHandler("test-request", request)
         
         switch result {
         case .success(let value):
@@ -372,10 +372,10 @@ final class CommandHandlerTests: XCTestCase {
         XCTAssertEqual(count, 1, "Registry should have 1 handler")
         
         // Test handler unregistration
-        let removed = await registry.unregisterHandler("test-command")
+        let removed = await registry.unregisterHandler("test-request")
         XCTAssertTrue(removed, "Handler should be successfully unregistered")
         
-        let hasHandlerAfterRemoval = await registry.hasHandler("test-command")
+        let hasHandlerAfterRemoval = await registry.hasHandler("test-request")
         XCTAssertFalse(hasHandlerAfterRemoval, "Registry should not have handler after removal")
     }
     
@@ -411,30 +411,30 @@ final class CommandHandlerTests: XCTestCase {
     func testHandlerRegistryNotFound() async {
         let registry = HandlerRegistry()
         
-        let command = createTestCommand(command: "nonexistent-command")
-        let result = await registry.executeHandler("nonexistent-command", command)
+        let request = createTestRequest(request: "nonexistent-request")
+        let result = await registry.executeHandler("nonexistent-request", request)
         
         switch result {
         case .success:
             XCTFail("Execution should fail for nonexistent handler")
         case .failure(let error):
             XCTAssertEqual(error.code, JSONRPCErrorCode.methodNotFound.rawValue, "Error should be method not found")
-            XCTAssertTrue(error.data?.details?.contains("Command not found") == true, "Error should mention command not found")
+            XCTAssertTrue(error.data?.details?.contains("Request not found") == true, "Error should mention request not found")
         }
     }
     
     // MARK: - Handler Arguments Tests
     
     func testHandlerArgumentAccess() async {
-        // Test handler can access and process command arguments
+        // Test handler can access and process request arguments
         struct ProcessedData: Codable, Equatable {
             let processedName: String
             let processedAge: Int
-            let originalCommand: String
+            let originalRequest: String
         }
         
-        let handler: SyncHandler<ProcessedData> = objectHandler { command in
-            guard let args = command.args,
+        let handler: SyncHandler<ProcessedData> = objectHandler { request in
+            guard let args = request.args,
                   let name = args["name"]?.value as? String,
                   let ageDouble = args["age"]?.value as? Double else {
                 return .failure(NSError(domain: "TestError", code: 1, userInfo: [NSLocalizedDescriptionKey: "missing required arguments"]))
@@ -443,24 +443,24 @@ final class CommandHandlerTests: XCTestCase {
             let processedData = ProcessedData(
                 processedName: "Hello, \(name)",
                 processedAge: Int(ageDouble) + 1,
-                originalCommand: command.command
+                originalRequest: request.request
             )
             
             return .success(processedData)
         }
         
-        let command = createTestCommand(
-            command: "process-user",
+        let request = createTestRequest(
+            request: "process-user",
             args: ["name": AnyCodable("John"), "age": AnyCodable(25.0)]
         )
         
-        let result = await handler.handle(command)
+        let result = await handler.handle(request)
         
         switch result {
         case .success(let value):
             XCTAssertEqual(value.processedName, "Hello, John", "Name should be processed correctly")
             XCTAssertEqual(value.processedAge, 26, "Age should be incremented by 1")
-            XCTAssertEqual(value.originalCommand, "process-user", "Original command should be preserved")
+            XCTAssertEqual(value.originalRequest, "process-user", "Original request should be preserved")
         case .error(let error):
             XCTFail("Handler should not return error: \(error)")
         }
@@ -468,8 +468,8 @@ final class CommandHandlerTests: XCTestCase {
     
     func testHandlerArgumentValidation() async {
         // Test handler validates required arguments
-        let handler = stringHandler { command in
-            guard let args = command.args,
+        let handler = stringHandler { request in
+            guard let args = request.args,
                   let name = args["name"]?.value as? String,
                   args["age"]?.value as? Double != nil else {
                 return .failure(JSONRPCError.create(
@@ -482,8 +482,8 @@ final class CommandHandlerTests: XCTestCase {
         }
         
         // Test with missing age argument
-        let command = createTestCommand(args: ["name": AnyCodable("John")])
-        let result = await handler.handle(command)
+        let request = createTestRequest(args: ["name": AnyCodable("John")])
+        let result = await handler.handle(request)
         
         switch result {
         case .success:

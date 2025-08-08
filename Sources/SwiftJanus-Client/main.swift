@@ -6,40 +6,35 @@ struct SwiftJanusClient {
         // Parse command line arguments
         let arguments = CommandLine.arguments
         var socketPath = "/tmp/swift_test_server.sock"
-        var specPath = "test-manifest.json"
+        var manifestPath = "test-manifest.json"
         
         // Parse command line arguments
         for i in 0..<arguments.count - 1 {
             if arguments[i] == "--socket-path" {
                 socketPath = arguments[i + 1]
-            } else if arguments[i] == "--spec" {
-                specPath = arguments[i + 1]
+            } else if arguments[i] == "--manifest" {
+                manifestPath = arguments[i + 1]
             }
         }
         
         print("Connecting Swift client to: \(socketPath)")
         
-        // Load Manifest from file
-        let specData = try Data(contentsOf: URL(fileURLWithPath: specPath))
-        let parser = ManifestParser()
-        let manifest = try parser.parseJSON(specData)
+        // Manifest loading removed - manifest fetched dynamically from server
         
         // Create SOCK_DGRAM client
-        let client = JanusClient(
+        let client = try await JanusClient(
             socketPath: socketPath,
-            channelId: "test",
-            manifest: manifest,
             maxMessageSize: 65536,
             defaultTimeout: 30.0,
             datagramTimeout: 5.0,
             enableValidation: true
         )
         
-        print("Testing ping command...")
+        print("Testing ping request...")
         
-        // Test ping command
+        // Test ping request
         do {
-            let response = try await client.sendCommand(
+            let response = try await client.sendRequest(
                 "ping",
                 timeout: 5.0
             )
@@ -57,11 +52,11 @@ struct SwiftJanusClient {
             return
         }
         
-        print("Testing echo command...")
+        print("Testing echo request...")
         
-        // Test echo command
+        // Test echo request
         do {
-            let response = try await client.sendCommand(
+            let response = try await client.sendRequest(
                 "echo",
                 args: ["message": AnyCodable("Hello from Swift client!")],
                 timeout: 5.0

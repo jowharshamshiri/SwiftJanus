@@ -19,35 +19,34 @@ final class JanusTests: XCTestCase {
     }
     
     func testManifestCreation() throws {
-        let argSpec = ArgumentSpec(
+        let argManifest = ArgumentManifest(
             type: .string,
             required: true,
             description: "Test argument"
         )
         
-        let commandSpec = CommandSpec(
-            description: "Test command",
-            args: ["testArg": argSpec],
-            response: ResponseSpec(
+        let requestManifest = RequestManifest(
+            description: "Test request",
+            args: ["testArg": argManifest],
+            response: ResponseManifest(
                 type: .object,
                 description: "Test response"
             )
         )
         
-        let channelSpec = ChannelSpec(
-            description: "Test channel",
-            commands: ["testCommand": commandSpec]
-        )
-        
         let manifest = Manifest(
             version: "1.0.0",
-            channels: ["testChannel": channelSpec]
+            models: ["testModel": ModelManifest(
+                type: .object,
+                properties: ["testArg": argManifest],
+                description: "Test model"
+            )]
         )
         
         XCTAssertEqual(manifest.version, "1.0.0")
-        XCTAssertEqual(manifest.channels.count, 1)
-        XCTAssertNotNil(manifest.channels["testChannel"])
-        XCTAssertEqual(manifest.channels["testChannel"]?.commands.count, 1)
+        XCTAssertEqual(manifest.models?.count ?? 0, 1)
+        XCTAssertNotNil(manifest.models?["testModel"])
+        XCTAssertEqual(manifest.models?["testModel"]?.properties.count, 1)
     }
     
     func testManifestJSONSerialization() throws {
@@ -58,35 +57,33 @@ final class JanusTests: XCTestCase {
         let jsonData = try encoder.encode(manifest)
         
         let decoder = JSONDecoder()
-        let decodedSpec = try decoder.decode(Manifest.self, from: jsonData)
+        let decodedManifest = try decoder.decode(Manifest.self, from: jsonData)
         
-        XCTAssertEqual(decodedSpec.version, manifest.version)
-        XCTAssertEqual(decodedSpec.channels.count, manifest.channels.count)
+        XCTAssertEqual(decodedManifest.version, manifest.version)
+        XCTAssertEqual(decodedManifest.models?.count ?? 0, manifest.models?.count ?? 0)
     }
     
-    func testJanusCommandSerialization() throws {
+    func testJanusRequestSerialization() throws {
         let args: [String: AnyCodable] = [
             "stringArg": AnyCodable("test"),
             "intArg": AnyCodable(42),
             "boolArg": AnyCodable(true)
         ]
         
-        let command = JanusCommand(
-            channelId: "testChannel",
-            command: "testCommand",
+        let request = JanusRequest(
+            request: "testRequest",
             args: args
         )
         
         let encoder = JSONEncoder()
-        let jsonData = try encoder.encode(command)
+        let jsonData = try encoder.encode(request)
         
         let decoder = JSONDecoder()
-        let decodedCommand = try decoder.decode(JanusCommand.self, from: jsonData)
+        let decodedRequest = try decoder.decode(JanusRequest.self, from: jsonData)
         
-        XCTAssertEqual(decodedCommand.channelId, command.channelId)
-        XCTAssertEqual(decodedCommand.command, command.command)
-        XCTAssertEqual(decodedCommand.id, command.id)
-        XCTAssertNotNil(decodedCommand.args)
+        XCTAssertEqual(decodedRequest.request, request.request)
+        XCTAssertEqual(decodedRequest.id, request.id)
+        XCTAssertNotNil(decodedRequest.args)
     }
     
     func testJanusResponseSerialization() throws {
@@ -96,8 +93,7 @@ final class JanusTests: XCTestCase {
         ]
         
         let response = JanusResponse(
-            commandId: "test-command-id",
-            channelId: "testChannel",
+            requestId: "test-request-id",
             success: true,
             result: AnyCodable(result)
         )
@@ -108,7 +104,7 @@ final class JanusTests: XCTestCase {
         let decoder = JSONDecoder()
         let decodedResponse = try decoder.decode(JanusResponse.self, from: jsonData)
         
-        XCTAssertEqual(decodedResponse.commandId, response.commandId)
+        XCTAssertEqual(decodedResponse.requestId, response.requestId)
         XCTAssertEqual(decodedResponse.channelId, response.channelId)
         XCTAssertEqual(decodedResponse.success, response.success)
         XCTAssertNotNil(decodedResponse.result)
@@ -173,7 +169,6 @@ final class JanusTests: XCTestCase {
         do {
             let client = try await JanusClient(
                 socketPath: socketPath,
-                channelId: "test"
             )
             
             // Test that client is created successfully
@@ -184,47 +179,48 @@ final class JanusTests: XCTestCase {
     }
     
     private func createTestManifest() -> Manifest {
-        let argSpec = ArgumentSpec(
+        let argManifest = ArgumentManifest(
             type: .string,
             required: true,
             description: "Test argument",
-            validation: ValidationSpec(
+            validation: ValidationManifest(
                 minLength: 1,
                 maxLength: 100,
                 pattern: "^[a-zA-Z0-9]+$"
             )
         )
         
-        let responseSpec = ResponseSpec(
+        let responseManifest = ResponseManifest(
             type: .object,
             properties: [
-                "result": ArgumentSpec(type: .string),
-                "timestamp": ArgumentSpec(type: .string)
+                "result": ArgumentManifest(type: .string),
+                "timestamp": ArgumentManifest(type: .string)
             ],
-            description: "Command response"
+            description: "Request response"
         )
         
-        let errorSpec = ErrorSpec(
+        let errorManifest = ErrorManifest(
             code: 400,
             message: "Bad Request",
-            description: "Invalid command arguments"
+            description: "Invalid request arguments"
         )
         
-        let commandSpec = CommandSpec(
-            description: "Test command for validation",
-            args: ["input": argSpec],
-            response: responseSpec,
+        let requestManifest = RequestManifest(
+            description: "Test request for validation",
+            args: ["input": argManifest],
+            response: responseManifest,
             errorCodes: ["badRequest"]
-        )
-        
-        let channelSpec = ChannelSpec(
-            description: "Test channel for API validation",
-            commands: ["testCommand": commandSpec]
         )
         
         return Manifest(
             version: "1.0.0",
-            channels: ["testChannel": channelSpec]
+            models: ["testModel": ModelManifest(
+                type: .object,
+                properties: [
+                    "id": ArgumentManifest(type: .string, required: true),
+                    "data": ArgumentManifest(type: .string)
+                ]
+            )]
         )
     }
     
@@ -260,7 +256,7 @@ final class JanusTests: XCTestCase {
         
         // Test error response creation  
         let janusResponse = JanusResponse(
-            commandId: "test-cmd",
+            requestId: "test-cmd",
             channelId: "test-channel",
             success: false,
             result: nil,

@@ -25,14 +25,14 @@ struct JanusDgram: AsyncParsableCommand {
     @Option(name: [.customLong("send-to")], help: "Send datagram to socket path")
     var sendTo: String?
     
-    @Option(name: .long, help: "Command to send")
-    var command: String = "ping"
+    @Option(name: .long, help: "Request to send")
+    var request: String = "ping"
     
     @Option(name: .long, help: "Message to send")
     var message: String = "hello"
     
     @Option(name: .long, help: "Manifest file (required for validation)")
-    var spec: String?
+    var manifestPath: String?
     
     // Manifest storage
     private var manifest: Manifest?
@@ -44,8 +44,6 @@ struct JanusDgram: AsyncParsableCommand {
         }
     }
     
-    @Option(name: .long, help: "Channel ID for command routing")
-    var channel: String = "test"
     
     @Flag(name: .long, help: "Enable debug logging")
     var debug: Bool = false
@@ -54,20 +52,20 @@ struct JanusDgram: AsyncParsableCommand {
         debugLog("Starting run() function")
         
         // Load Manifest if provided
-        if let specPath = spec {
-            debugLog("Loading spec from \(specPath)")
+        if let manifestPath = manifestPath {
+            debugLog("Loading manifest from \(manifestPath)")
             do {
-                let specURL = URL(fileURLWithPath: specPath)
-                let specData = try Data(contentsOf: specURL)
+                let manifestURL = URL(fileURLWithPath: manifestPath)
+                let manifestData = try Data(contentsOf: manifestURL)
                 let parser = ManifestParser()
-                manifest = try parser.parseJSON(specData)
-                print("✅ Loaded Manifest from: \(specPath)")
+                self.manifest = try parser.parseJSON(manifestData)
+                print("✅ Loaded Manifest from: \(manifestPath)")
             } catch {
-                print("❌ Failed to load Manifest from \(specPath): \(error)")
+                print("❌ Failed to load Manifest from \(manifestPath): \(error)")
                 throw ExitCode.failure
             }
         } else {
-            debugLog("No spec provided")
+            debugLog("No manifest provided")
         }
         
         if listen {
@@ -139,19 +137,18 @@ struct JanusDgram: AsyncParsableCommand {
             
             buffer = buffer.prefix(bytesReceived)
             
-            guard let cmd = try? JSONDecoder().decode(JanusCommand.self, from: buffer) else {
+            guard let cmd = try? JSONDecoder().decode(JanusRequest.self, from: buffer) else {
                 print("Failed to parse datagram")
                 continue
             }
             
-            print("Received datagram: \(cmd.command) (ID: \(cmd.id))")
+            print("Received datagram: \(cmd.request) (ID: \(cmd.id))")
             
             // Send response via reply_to if specified
             if let replyTo = cmd.replyTo {
                 sendResponse(
-                    commandId: cmd.id,
-                    channelId: cmd.channelId,
-                    command: cmd.command,
+                    requestId: cmd.id,
+                    request: cmd.request,
                     args: cmd.args,
                     replyTo: replyTo
                 )
@@ -164,14 +161,14 @@ struct JanusDgram: AsyncParsableCommand {
         
         do {
             debugLog("Creating JanusClient...")
-            let client = try await JanusClient(socketPath: target, channelId: "swift-client")
+            let client = try await JanusClient(socketPath: target)
             debugLog("JanusClient created successfully")
             
             let args: [String: AnyCodable] = ["message": AnyCodable(message)]
             
-            // Send command using high-level API
-            debugLog("Sending command: \(command)")
-            let response = try await client.sendCommand(command, args: args, timeout: 5.0)
+            // Send request using high-level API
+            debugLog("Sending request: \(request)")
+            let response = try await client.sendRequest(request, args: args, timeout: 5.0)
             print("Response: Success=\(response.success), Result=\(response.result?.value ?? [:])")
             
         } catch let error as JSONRPCError {
@@ -183,21 +180,21 @@ struct JanusDgram: AsyncParsableCommand {
         }
     }
     
-    func sendResponse(commandId: String, channelId: String, command: String, args: [String: AnyCodable]?, replyTo: String) {
+    func sendResponse(requestId: String, request: String, args: [String: AnyCodable]?, replyTo: String) {
         var result: [String: AnyCodable] = [:]
         var success = true
         var errorObj: JSONRPCError?
         
-        // Built-in commands are always allowed and hardcoded (matches Go implementation exactly)
-        let builtInCommands: Set<String> = ["spec", "ping", "echo", "get_info", "validate", "slow_process"]
+        // Built-in requests are always allowed and hardcoded (matches Go implementation exactly)
+        let builtInRequests: Set<String> = ["manifest", "ping", "echo", "get_info", "validate", "slow_process"]
         
-        // Add arguments based on command type (matches Go/Rust implementation)
+        // Add arguments based on request type (matches Go/Rust implementation)
         var enhancedArgs = args ?? [:]
-        if ["echo", "get_info", "validate", "slow_process"].contains(command) {
+        if ["echo", "get_info", "validate", "slow_process"].contains(request) {
             enhancedArgs["timestamp"] = AnyCodable(Date().timeIntervalSince1970)
         }
         
-        switch command {
+        switch request {
         case "ping":
             result["status"] = AnyCodable("pong")
             result["echo"] = AnyCodable("Server is responding")
@@ -238,7 +235,7 @@ struct JanusDgram: AsyncParsableCommand {
             result["status"] = AnyCodable("completed")
             result["processing_time"] = AnyCodable(2.0)
             result["message"] = AnyCodable("Slow process completed successfully")
-        case "spec":
+        case "manifest":
             if let manifest = manifest {
                 do {
                     let jsonData = try JSONEncoder().encode(manifest)
@@ -255,16 +252,14 @@ struct JanusDgram: AsyncParsableCommand {
             }
         default:
             success = false
-            errorObj = JSONRPCError.create(code: .methodNotFound, details: "Command '\(command)' not found")
+            errorObj = JSONRPCError.create(code: .methodNotFound, details: "Request '\(request)' not found")
         }
         
         let response = JanusResponse(
-            commandId: commandId,
-            channelId: channelId,
+            requestId: requestId,
             success: success,
             result: success ? AnyCodable(result) : nil,
-            error: errorObj,
-            timestamp: Date().timeIntervalSince1970
+            error: errorObj
         )
         
         // Send response via Unix datagram socket
@@ -311,9 +306,9 @@ struct JanusDgram: AsyncParsableCommand {
         }
     }
     
-    private func validateArgument(_ value: AnyCodable, against argSpec: ArgumentSpec, name: String) throws {
+    private func validateArgument(_ value: AnyCodable, against argManifest: ArgumentManifest, name: String) throws {
         // Type validation
-        switch argSpec.type {
+        switch argManifest.type {
         case .string:
             guard value.value is String else {
                 throw JSONRPCError.create(code: .invalidParams, details: "Argument '\(name)' must be a string")

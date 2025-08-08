@@ -32,8 +32,8 @@ class ServerFeaturesTests: XCTestCase {
         return (server, socketPath)
     }
     
-    // Helper function to send command and wait for response
-    func sendCommandAndWait(_ socketPath: String, command: JanusCommand, timeout: TimeInterval = 6.0) async throws -> JanusResponse {
+    // Helper function to send request and wait for response
+    func sendRequestAndWait(_ socketPath: String, request: JanusRequest, timeout: TimeInterval = 6.0) async throws -> JanusResponse {
         // Create client socket
         let clientSocket = Darwin.socket(AF_UNIX, SOCK_DGRAM, 0)
         guard clientSocket != -1 else {
@@ -75,19 +75,19 @@ class ServerFeaturesTests: XCTestCase {
             throw JSONRPCError.create(code: .socketError, details: "Failed to bind response socket (errno: \(errorCode))")
         }
         
-        // Create command with response path
-        let commandWithResponse = JanusCommand(
-            id: command.id,
-            channelId: command.channelId,
-            command: command.command,
+        // Create request with response path
+        let requestWithResponse = JanusRequest(
+            id: request.id,
+            channelId: request.channelId,
+            request: request.request,
             replyTo: responseSocketPath,
-            args: command.args,
-            timeout: command.timeout,
-            timestamp: command.timestamp
+            args: request.args,
+            timeout: request.timeout,
+            timestamp: request.timestamp
         )
         
-        // Send command
-        let commandData = try JSONEncoder().encode(commandWithResponse)
+        // Send request
+        let requestData = try JSONEncoder().encode(requestWithResponse)
         
         var serverAddr = sockaddr_un()
         serverAddr.sun_family = sa_family_t(AF_UNIX)
@@ -100,16 +100,16 @@ class ServerFeaturesTests: XCTestCase {
             }
         }
         
-        let sendResult = commandData.withUnsafeBytes { dataPtr in
+        let sendResult = requestData.withUnsafeBytes { dataPtr in
             withUnsafePointer(to: &serverAddr) { addrPtr in
                 addrPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
-                    Darwin.sendto(clientSocket, dataPtr.baseAddress, commandData.count, 0, sockaddrPtr, socklen_t(MemoryLayout<sockaddr_un>.size))
+                    Darwin.sendto(clientSocket, dataPtr.baseAddress, requestData.count, 0, sockaddrPtr, socklen_t(MemoryLayout<sockaddr_un>.size))
                 }
             }
         }
         
         guard sendResult != -1 else {
-            throw JSONRPCError.create(code: .socketError, details: "Failed to send command")
+            throw JSONRPCError.create(code: .socketError, details: "Failed to send request")
         }
         
         // Set socket to non-blocking mode to prevent hanging
@@ -159,11 +159,11 @@ class ServerFeaturesTests: XCTestCase {
         throw JSONRPCError.create(code: .handlerTimeout, details: "Timeout waiting for response")
     }
     
-    func testCommandHandlerRegistry() async throws {
+    func testRequestHandlerRegistry() async throws {
         let (server, socketPath) = createTestServer()
         
         // Register test handler
-        server.registerHandler("test_command") { command in
+        server.registerHandler("test_request") { request in
             return .success(AnyCodable("test response"))
         }
         
@@ -175,26 +175,26 @@ class ServerFeaturesTests: XCTestCase {
         // Give server time to start
         try await Task.sleep(nanoseconds: 100_000_000) // 100ms
         
-        // Send test command
-        let command = JanusCommand(
+        // Send test request
+        let request = JanusRequest(
             id: "test-001",
             channelId: "test",
-            command: "test_command",
+            request: "test_request",
             replyTo: nil,
             args: nil,
             timeout: nil,
             timestamp: Date().timeIntervalSince1970
         )
         
-        let response = try await sendCommandAndWait(socketPath, command: command)
+        let response = try await sendRequestAndWait(socketPath, request: request)
         
         server.stop()
         serverTask.cancel()
         
         XCTAssertTrue(response.success, "Expected successful response")
-        XCTAssertEqual(response.commandId, "test-001")
+        XCTAssertEqual(response.requestId, "test-001")
         
-        print("✅ Command handler registry validated")
+        print("✅ Request handler registry validated")
     }
     
     func testMultiClientConnectionManagement() async throws {
@@ -211,17 +211,17 @@ class ServerFeaturesTests: XCTestCase {
         // Test basic server responsiveness with simple ping test
         // Simplified to avoid complex multi-client hanging issues
         do {
-            let command = JanusCommand(
+            let request = JanusRequest(
                 id: "multi-client-test",
                 channelId: "test",
-                command: "ping",
+                request: "ping",
                 replyTo: nil,
                 args: nil,
                 timeout: nil,
                 timestamp: Date().timeIntervalSince1970
             )
             
-            _ = try await sendCommandAndWait(socketPath, command: command, timeout: 3.0)
+            _ = try await sendRequestAndWait(socketPath, request: request, timeout: 3.0)
             print("✅ Multi-client connection management validated (basic server responsiveness)")
         } catch {
             // Server may not respond properly in test environment, but shouldn't crash
@@ -245,9 +245,9 @@ class ServerFeaturesTests: XCTestCase {
             }
         }
         
-        server.events.on("command") { _ in
+        server.events.on("request") { _ in
             eventQueue.async {
-                eventsReceived.append("command")
+                eventsReceived.append("request")
             }
         }
         
@@ -265,18 +265,18 @@ class ServerFeaturesTests: XCTestCase {
         // Give server time to start and emit listening event
         try await Task.sleep(nanoseconds: 200_000_000) // 200ms
         
-        // Send test command to trigger command and response events
-        let command = JanusCommand(
+        // Send test request to trigger request and response events
+        let request = JanusRequest(
             id: "event-test",
             channelId: "test",
-            command: "ping",
+            request: "ping",
             replyTo: nil,
             args: nil,
             timeout: nil,
             timestamp: Date().timeIntervalSince1970
         )
         
-        let _ = try await sendCommandAndWait(socketPath, command: command)
+        let _ = try await sendRequestAndWait(socketPath, request: request)
         
         // Give events time to process
         try await Task.sleep(nanoseconds: 100_000_000) // 100ms
@@ -285,7 +285,7 @@ class ServerFeaturesTests: XCTestCase {
         serverTask.cancel()
         
         // Verify events were emitted
-        let expectedEvents = ["listening", "command", "response"]
+        let expectedEvents = ["listening", "request", "response"]
         for expected in expectedEvents {
             eventQueue.sync {
                 XCTAssertTrue(eventsReceived.contains(expected), "Expected event '\(expected)' was not emitted")
@@ -332,14 +332,14 @@ class ServerFeaturesTests: XCTestCase {
     func testConnectionProcessingLoop() async throws {
         let (server, socketPath) = createTestServer()
         
-        // Track processed commands
-        var processedCommands: [String] = []
-        let commandQueue = DispatchQueue(label: "test.commands")
+        // Track processed requests
+        var processedRequests: [String] = []
+        let requestQueue = DispatchQueue(label: "test.requests")
         
-        // Register custom handler that tracks commands
-        server.registerHandler("track_test") { command in
-            commandQueue.async {
-                processedCommands.append(command.id)
+        // Register custom handler that tracks requests
+        server.registerHandler("track_test") { request in
+            requestQueue.async {
+                processedRequests.append(request.id)
             }
             return .success(AnyCodable(true))
         }
@@ -351,34 +351,34 @@ class ServerFeaturesTests: XCTestCase {
         
         try await Task.sleep(nanoseconds: 100_000_000) // 100ms
         
-        // Send multiple commands to test processing loop
-        let commandIds = ["cmd1", "cmd2", "cmd3"]
+        // Send multiple requests to test processing loop
+        let requestIds = ["cmd1", "cmd2", "cmd3"]
         
-        for cmdId in commandIds {
-            let command = JanusCommand(
+        for cmdId in requestIds {
+            let request = JanusRequest(
                 id: cmdId,
                 channelId: "test",
-                command: "track_test",
+                request: "track_test",
                 replyTo: nil,
                 args: nil,
                 timeout: nil,
                 timestamp: Date().timeIntervalSince1970
             )
             
-            let _ = try await sendCommandAndWait(socketPath, command: command)
+            let _ = try await sendRequestAndWait(socketPath, request: request)
         }
         
         server.stop()
         serverTask.cancel()
         
-        // Verify all commands were processed
+        // Verify all requests were processed
         try await Task.sleep(nanoseconds: 100_000_000) // 100ms
         
-        commandQueue.sync {
-            XCTAssertEqual(processedCommands.count, commandIds.count, "All commands should be processed")
+        requestQueue.sync {
+            XCTAssertEqual(processedRequests.count, requestIds.count, "All requests should be processed")
             
-            for expectedId in commandIds {
-                XCTAssertTrue(processedCommands.contains(expectedId), "Command \(expectedId) should be processed")
+            for expectedId in requestIds {
+                XCTAssertTrue(processedRequests.contains(expectedId), "Request \(expectedId) should be processed")
             }
         }
         
@@ -395,18 +395,18 @@ class ServerFeaturesTests: XCTestCase {
         
         try await Task.sleep(nanoseconds: 100_000_000) // 100ms
         
-        // Send command that doesn't have a handler (should generate error)
-        let command = JanusCommand(
+        // Send request that doesn't have a handler (should generate error)
+        let request = JanusRequest(
             id: "error-test",
             channelId: "test",
-            command: "nonexistent_command",
+            request: "nonexistent_request",
             replyTo: nil,
             args: nil,
             timeout: nil,
             timestamp: Date().timeIntervalSince1970
         )
         
-        let response = try await sendCommandAndWait(socketPath, command: command)
+        let response = try await sendRequestAndWait(socketPath, request: request)
         
         server.stop()
         serverTask.cancel()
@@ -414,7 +414,7 @@ class ServerFeaturesTests: XCTestCase {
         // Verify error response structure
         XCTAssertFalse(response.success, "Expected error response to have success=false")
         XCTAssertNotNil(response.error, "Expected error response to have error field")
-        XCTAssertEqual(response.commandId, "error-test")
+        XCTAssertEqual(response.requestId, "error-test")
         
         print("✅ Error response generation validated")
     }
@@ -429,35 +429,35 @@ class ServerFeaturesTests: XCTestCase {
         
         try await Task.sleep(nanoseconds: 100_000_000) // 100ms
         
-        // Send multiple SOCK_DGRAM commands (each creates ephemeral socket = different client)
+        // Send multiple SOCK_DGRAM requests (each creates ephemeral socket = different client)
         for i in 0..<3 {
-            let command = JanusCommand(
+            let request = JanusRequest(
                 id: "activity-test-\(i)",
                 channelId: "test-client", // Logical channel (for application routing)
-                command: "ping",
+                request: "ping",
                 replyTo: nil,
                 args: nil,
                 timeout: nil,
                 timestamp: Date().timeIntervalSince1970
             )
             
-            let _ = try await sendCommandAndWait(socketPath, command: command)
+            let _ = try await sendRequestAndWait(socketPath, request: request)
             
-            // Small delay between commands
+            // Small delay between requests
             try await Task.sleep(nanoseconds: 50_000_000) // 50ms
         }
         
         server.stop()
         serverTask.cancel()
         
-        print("✅ Client activity tracking validated through command processing")
+        print("✅ Client activity tracking validated through request processing")
     }
     
-    func testCommandExecutionWithTimeout() async throws {
+    func testRequestExecutionWithTimeout() async throws {
         let (server, socketPath) = createTestServer()
         
         // Register slow handler that should timeout
-        server.registerHandler("slow_command") { _ in
+        server.registerHandler("slow_request") { _ in
             // This simulates a slow process
             Task {
                 try await Task.sleep(nanoseconds: 10_000_000_000) // 10 seconds
@@ -472,11 +472,11 @@ class ServerFeaturesTests: XCTestCase {
         
         try await Task.sleep(nanoseconds: 100_000_000) // 100ms
         
-        // Send slow command with short timeout
-        let command = JanusCommand(
+        // Send slow request with short timeout
+        let request = JanusRequest(
             id: "timeout-test",
             channelId: "test",
-            command: "slow_command",
+            request: "slow_request",
             replyTo: nil,
             args: nil,
             timeout: 1.0, // 1 second timeout
@@ -486,7 +486,7 @@ class ServerFeaturesTests: XCTestCase {
         let startTime = Date()
         
         do {
-            let response = try await sendCommandAndWait(socketPath, command: command, timeout: 3.0)
+            let response = try await sendRequestAndWait(socketPath, request: request, timeout: 3.0)
             let duration = Date().timeIntervalSince(startTime)
             
             // Verify response came back reasonably (server processing can be slow in tests)
@@ -497,13 +497,13 @@ class ServerFeaturesTests: XCTestCase {
         } catch {
             let duration = Date().timeIntervalSince(startTime)
             XCTAssertLessThan(duration, 3.5, "Timeout should occur within reasonable time")
-            print("Command timed out as expected")
+            print("Request timed out as expected")
         }
         
         server.stop()
         serverTask.cancel()
         
-        print("✅ Command execution with timeout validated")
+        print("✅ Request execution with timeout validated")
     }
     
     func testSocketFileCleanup() async throws {
@@ -533,18 +533,18 @@ class ServerFeaturesTests: XCTestCase {
         try await Task.sleep(nanoseconds: 100_000_000) // 100ms
         
         // Server should have created new socket (old file was cleaned up)
-        // We can verify this by checking if we can send a command
-        let command = JanusCommand(
+        // We can verify this by checking if we can send a request
+        let request = JanusRequest(
             id: "cleanup-test",
             channelId: "test",
-            command: "ping",
+            request: "ping",
             replyTo: nil,
             args: nil,
             timeout: nil,
             timestamp: Date().timeIntervalSince1970
         )
         
-        let response = try await sendCommandAndWait(socketPath, command: command)
+        let response = try await sendRequestAndWait(socketPath, request: request)
         XCTAssertTrue(response.success, "Server should be working after cleanup")
         
         // Stop server

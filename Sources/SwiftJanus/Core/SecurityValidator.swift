@@ -11,13 +11,13 @@ public final class SecurityValidator {
     
     private static let maxSocketPathLength = 104  // Unix socket path limit
     private static let maxChannelNameLength = 64
-    private static let maxCommandNameLength = 64
+    private static let maxRequestNameLength = 64
     private static let maxArgsDataSize = 64 * 1024  // 64KB limit
     private static let maxMessageSize = 8192
     
     // MARK: - Regular Expressions
     
-    private static let commandNamePattern = try! NSRegularExpression(pattern: "^[a-zA-Z0-9_-]+$")
+    private static let requestNamePattern = try! NSRegularExpression(pattern: "^[a-zA-Z0-9_-]+$")
     private static let channelNamePattern = try! NSRegularExpression(pattern: "^[a-zA-Z0-9_-]+$")
     private static let socketPathPattern = try! NSRegularExpression(pattern: "^(/[a-zA-Z0-9._-]+)+$")
     
@@ -94,44 +94,44 @@ public final class SecurityValidator {
         }
     }
     
-    // MARK: - Command Validation
+    // MARK: - Request Validation
     
-    /// Validate command name (matches Go implementation exactly)
-    public static func validateCommandName(_ commandName: String) throws {
+    /// Validate request name (matches Go implementation exactly)
+    public static func validateRequestName(_ requestName: String) throws {
         // 1. Length validation
-        guard !commandName.isEmpty else {
-            throw JSONRPCError.create(code: .securityViolation, details: "Command name cannot be empty")
+        guard !requestName.isEmpty else {
+            throw JSONRPCError.create(code: .securityViolation, details: "Request name cannot be empty")
         }
         
-        guard commandName.count <= maxCommandNameLength else {
-            throw JSONRPCError.create(code: .securityViolation, details: "Command name exceeds maximum length of \(maxCommandNameLength) characters")
+        guard requestName.count <= maxRequestNameLength else {
+            throw JSONRPCError.create(code: .securityViolation, details: "Request name exceeds maximum length of \(maxRequestNameLength) characters")
         }
         
         // 2. Character validation (alphanumeric + hyphen + underscore only)
-        let range = NSRange(location: 0, length: commandName.utf16.count)
-        guard commandNamePattern.firstMatch(in: commandName, range: range) != nil else {
-            throw JSONRPCError.create(code: .securityViolation, details: "Command name contains invalid characters (only alphanumeric, hyphen, underscore allowed)")
+        let range = NSRange(location: 0, length: requestName.utf16.count)
+        guard requestNamePattern.firstMatch(in: requestName, range: range) != nil else {
+            throw JSONRPCError.create(code: .securityViolation, details: "Request name contains invalid characters (only alphanumeric, hyphen, underscore allowed)")
         }
         
-        // 3. Check for dangerous command patterns
+        // 3. Check for dangerous request patterns
         let dangerousPatterns = ["eval", "exec", "system", "shell", "rm", "delete", "drop"]
         for pattern in dangerousPatterns {
-            if commandName.lowercased().contains(pattern) {
-                throw JSONRPCError.create(code: .securityViolation, details: "Command name contains dangerous pattern: \(pattern)")
+            if requestName.lowercased().contains(pattern) {
+                throw JSONRPCError.create(code: .securityViolation, details: "Request name contains dangerous pattern: \(pattern)")
             }
         }
     }
     
     // MARK: - Arguments Validation
     
-    /// Validate command arguments (matches Go implementation exactly)
-    public static func validateCommandArgs(_ args: [String: AnyCodable]?) throws {
+    /// Validate request arguments (matches Go implementation exactly)
+    public static func validateRequestArgs(_ args: [String: AnyCodable]?) throws {
         guard let args = args else { return }
         
         // 1. Serialize to check size
         let jsonData = try JSONEncoder().encode(args)
         guard jsonData.count <= maxArgsDataSize else {
-            throw JSONRPCError.create(code: .securityViolation, details: "Command arguments exceed maximum size of \(maxArgsDataSize) bytes")
+            throw JSONRPCError.create(code: .securityViolation, details: "Request arguments exceed maximum size of \(maxArgsDataSize) bytes")
         }
         
         // 2. Check for dangerous argument names
@@ -218,23 +218,23 @@ public final class SecurityValidator {
         }
     }
     
-    // MARK: - Command ID Validation
+    // MARK: - Request ID Validation
     
-    /// Validate command ID format and security
-    public static func validateCommandId(_ commandId: String) throws {
-        guard !commandId.isEmpty else {
-            throw JSONRPCError.create(code: .securityViolation, details: "Command ID cannot be empty")
+    /// Validate request ID format and security
+    public static func validateRequestId(_ requestId: String) throws {
+        guard !requestId.isEmpty else {
+            throw JSONRPCError.create(code: .securityViolation, details: "Request ID cannot be empty")
         }
         
-        guard commandId.count <= 64 else {
-            throw JSONRPCError.create(code: .securityViolation, details: "Command ID exceeds maximum length of 64 characters")
+        guard requestId.count <= 64 else {
+            throw JSONRPCError.create(code: .securityViolation, details: "Request ID exceeds maximum length of 64 characters")
         }
         
         // Must be alphanumeric or UUID-like format
         let uuidPattern = try! NSRegularExpression(pattern: "^[a-zA-Z0-9-]+$")
-        let range = NSRange(location: 0, length: commandId.utf16.count)
-        guard uuidPattern.firstMatch(in: commandId, range: range) != nil else {
-            throw JSONRPCError.create(code: .securityViolation, details: "Command ID contains invalid characters")
+        let range = NSRange(location: 0, length: requestId.utf16.count)
+        guard uuidPattern.firstMatch(in: requestId, range: range) != nil else {
+            throw JSONRPCError.create(code: .securityViolation, details: "Request ID contains invalid characters")
         }
     }
     
@@ -283,13 +283,13 @@ public final class SecurityValidator {
     /// Resource limit monitoring configuration
     public struct ResourceLimits {
         public let maxActiveConnections: Int
-        public let maxCommandHandlers: Int
+        public let maxRequestHandlers: Int
         public let maxPendingRequests: Int
         public let maxMemoryUsage: Int // bytes
         
-        public init(maxActiveConnections: Int = 100, maxCommandHandlers: Int = 50, maxPendingRequests: Int = 1000, maxMemoryUsage: Int = 64 * 1024 * 1024) {
+        public init(maxActiveConnections: Int = 100, maxRequestHandlers: Int = 50, maxPendingRequests: Int = 1000, maxMemoryUsage: Int = 64 * 1024 * 1024) {
             self.maxActiveConnections = maxActiveConnections
-            self.maxCommandHandlers = maxCommandHandlers
+            self.maxRequestHandlers = maxRequestHandlers
             self.maxPendingRequests = maxPendingRequests
             self.maxMemoryUsage = maxMemoryUsage
         }
@@ -298,7 +298,7 @@ public final class SecurityValidator {
     /// Validate resource usage against limits
     public static func validateResourceUsage(
         activeConnections: Int,
-        commandHandlers: Int,
+        requestHandlers: Int,
         pendingRequests: Int,
         memoryUsage: Int,
         limits: ResourceLimits = ResourceLimits()
@@ -307,8 +307,8 @@ public final class SecurityValidator {
             throw JSONRPCError.create(code: .securityViolation, details: "Active connections (\(activeConnections)) exceed limit (\(limits.maxActiveConnections))")
         }
         
-        guard commandHandlers <= limits.maxCommandHandlers else {
-            throw JSONRPCError.create(code: .securityViolation, details: "Command handlers (\(commandHandlers)) exceed limit (\(limits.maxCommandHandlers))")
+        guard requestHandlers <= limits.maxRequestHandlers else {
+            throw JSONRPCError.create(code: .securityViolation, details: "Request handlers (\(requestHandlers)) exceed limit (\(limits.maxRequestHandlers))")
         }
         
         guard pendingRequests <= limits.maxPendingRequests else {
@@ -340,25 +340,32 @@ public final class SecurityValidator {
     
     // MARK: - Comprehensive Security Check
     
-    /// Perform comprehensive security validation on a socket command
-    public static func validateJanusCommand(_ command: JanusCommand) throws {
-        try validateCommandId(command.id)
-        try validateChannelName(command.channelId)
-        try validateCommandName(command.command)
-        try validateCommandArgs(command.args)
+    /// Perform comprehensive security validation on a socket request
+    public static func validateJanusRequest(_ request: JanusRequest) throws {
+        try validateRequestId(request.id)
+        // Channel validation removed - channels no longer part of protocol
+        try validateRequestName(request.request)
+        try validateRequestArgs(request.args)
         
         // Validate reply-to socket path if present
-        if let replyTo = command.replyTo {
+        if let replyTo = request.replyTo {
             try validateSocketPath(replyTo)
         }
         
-        // Validate timestamp (must be reasonable)
+        // Validate timestamp (must be reasonable) - PRIME DIRECTIVE: RFC 3339 format
         let now = Date().timeIntervalSince1970
-        let timeDiff = abs(command.timestamp - now)
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        
+        guard let requestDate = formatter.date(from: request.timestamp) else {
+            throw JSONRPCError.create(code: .securityViolation, details: "Invalid timestamp format - must be RFC 3339")
+        }
+        
+        let timeDiff = abs(requestDate.timeIntervalSince1970 - now)
         
         // Allow 5-minute clock skew
         guard timeDiff <= 300 else {
-            throw JSONRPCError.create(code: .securityViolation, details: "Command timestamp is too far from current time")
+            throw JSONRPCError.create(code: .securityViolation, details: "Request timestamp is too far from current time")
         }
     }
     

@@ -17,26 +17,26 @@ final class ProtocolTests: XCTestCase {
         try? FileManager.default.removeItem(atPath: testSocketPath)
         
         // Create test Manifest
-        let argSpec = ArgumentSpec(
+        let argManifest = ArgumentManifest(
             type: .string,
             required: false,
-            validation: ValidationSpec(maxLength: 10000)
+            validation: ValidationManifest(maxLength: 10000)
         )
         
-        let commandSpec = CommandSpec(
-            description: "Test command",
-            args: ["data": argSpec],
-            response: ResponseSpec(type: .object)
-        )
-        
-        let channelSpec = ChannelSpec(
-            description: "Test channel",
-            commands: ["testCommand": commandSpec]
+        let requestManifest = RequestManifest(
+            description: "Test request",
+            args: ["data": argManifest],
+            response: ResponseManifest(type: .object)
         )
         
         testManifest = Manifest(
             version: "1.0.0",
-            channels: ["testChannel": channelSpec]
+            models: [
+                "TestModel": ModelManifest(
+                    type: .object,
+                    properties: ["data": argManifest]
+                )
+            ]
         )
     }
     
@@ -181,7 +181,7 @@ final class ProtocolTests: XCTestCase {
     
     func testSocketMessageSerialization() throws {
         let testMessage = SocketMessage(
-            type: .command,
+            type: .request,
             payload: "test payload".data(using: .utf8)!
         )
         
@@ -197,26 +197,24 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(deserializedMessage.payload, testMessage.payload)
     }
     
-    func testJanusCommandSerialization() throws {
-        let testCommand = JanusCommand(
+    func testJanusRequestSerialization() throws {
+        let testRequest = JanusRequest(
             id: "test-id-123",
-            channelId: "testChannel",
-            command: "testCommand",
+            request: "testRequest",
             args: ["data": AnyCodable("test data"), "number": AnyCodable(42)]
         )
         
         // Test serialization
         let encoder = JSONEncoder()
-        let serializedData = try encoder.encode(testCommand)
+        let serializedData = try encoder.encode(testRequest)
         
         // Test deserialization
         let decoder = JSONDecoder()
-        let deserializedCommand = try decoder.decode(JanusCommand.self, from: serializedData)
+        let deserializedRequest = try decoder.decode(JanusRequest.self, from: serializedData)
         
-        XCTAssertEqual(deserializedCommand.id, testCommand.id)
-        XCTAssertEqual(deserializedCommand.channelId, testCommand.channelId)
-        XCTAssertEqual(deserializedCommand.command, testCommand.command)
-        XCTAssertEqual(deserializedCommand.args?.count, testCommand.args?.count)
+        XCTAssertEqual(deserializedRequest.id, testRequest.id)
+        XCTAssertEqual(deserializedRequest.request, testRequest.request)
+        XCTAssertEqual(deserializedRequest.args?.count, testRequest.args?.count)
     }
     
     func testJanusResponseSerialization() throws {
@@ -226,8 +224,7 @@ final class ProtocolTests: XCTestCase {
         )
         
         let testResponse = JanusResponse(
-            commandId: "test-response-id",
-            channelId: "testChannel",
+            requestId: "test-response-id",
             success: false,
             result: nil,
             error: testError
@@ -241,8 +238,7 @@ final class ProtocolTests: XCTestCase {
         let decoder = JSONDecoder()
         let deserializedResponse = try decoder.decode(JanusResponse.self, from: serializedData)
         
-        XCTAssertEqual(deserializedResponse.commandId, testResponse.commandId)
-        XCTAssertEqual(deserializedResponse.channelId, testResponse.channelId)
+        XCTAssertEqual(deserializedResponse.requestId, testResponse.requestId)
         XCTAssertEqual(deserializedResponse.success, testResponse.success)
         XCTAssertEqual(deserializedResponse.error?.code, testResponse.error?.code)
         XCTAssertEqual(deserializedResponse.error?.message, testResponse.error?.message)
@@ -274,7 +270,7 @@ final class ProtocolTests: XCTestCase {
                 let encoded = try encoder.encode(edgeCase)
                 let decoded = try decoder.decode(AnyCodable.self, from: encoded)
                 
-                // Special handling for NaN and infinity
+                // Manifestial handling for NaN and infinity
                 if let originalDouble = edgeCase.value as? Double,
                    let decodedDouble = decoded.value as? Double {
                     if originalDouble.isNaN {
@@ -341,22 +337,21 @@ final class ProtocolTests: XCTestCase {
     
     func testProtocolVersionHandling() async throws {
         // Test that the protocol handles version information correctly
-        let dummyChannel = ChannelSpec(commands: [:])
-        let specs = [
+        let dummyChannel = ChannelManifest(requests: [:])
+        let manifests = [
             Manifest(version: "1.0.0", channels: ["testChannel": dummyChannel]),
             Manifest(version: "2.0.0", channels: ["testChannel": dummyChannel]),
             Manifest(version: "1.0.0-beta", channels: ["testChannel": dummyChannel]),
             Manifest(version: "1.0.0+build.1", channels: ["testChannel": dummyChannel])
         ]
         
-        for spec in specs {
+        for manifest in manifests {
             // Should be able to create clients with different versions
             do {
                 let client = try await JanusClient(
                     socketPath: testSocketPath,
-                    channelId: "testChannel"
                 )
-                XCTAssertNotNil(client, "Client should be created successfully with version \(spec.version)")
+                XCTAssertNotNil(client, "Client should be created successfully with version \(manifest.version)")
             } catch {
                 // Expected to fail due to connection issues, but creation process should work
             }
@@ -394,9 +389,9 @@ final class ProtocolTests: XCTestCase {
         // Test that errors are properly structured for transmission
         let testErrors = [
             JSONRPCError.create(code: .invalidParams, details: "Invalid channel: test channel"),
-            JSONRPCError.create(code: .methodNotFound, details: "Unknown command: test command"),
+            JSONRPCError.create(code: .methodNotFound, details: "Unknown request: test request"),
             JSONRPCError.create(code: .invalidParams, details: "Invalid argument 'test args': reason"),
-            JSONRPCError.create(code: .handlerTimeout, details: "Command 'cmd-123' timed out after 30.0 seconds"),
+            JSONRPCError.create(code: .handlerTimeout, details: "Request 'cmd-123' timed out after 30.0 seconds"),
             JSONRPCError.create(code: .resourceLimitExceeded, details: "Resource limit exceeded: too many"),
             JSONRPCError.create(code: .invalidParams, details: "Invalid socket path: bad path")
         ]
@@ -420,7 +415,7 @@ final class ProtocolTests: XCTestCase {
             "string with \"quotes\" and \\backslashes\\",
             "unicode: café 世界 🌍",
             "numbers: 123 456.789 -0.001",
-            "special chars: \t\n\r",
+            "manifestial chars: \t\n\r",
             "empty: ",
             String(repeating: "repeated ", count: 1000)
         ]
@@ -450,7 +445,6 @@ final class ProtocolTests: XCTestCase {
         do {
             let socketClient = try await JanusClient(
                 socketPath: testSocketPath,
-                channelId: "test"
             )
             XCTAssertNotNil(socketClient, "Client should be created successfully")
         } catch {
