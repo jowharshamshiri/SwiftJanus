@@ -118,7 +118,11 @@ public class JanusServer {
         handlers[request] = handler
     }
     
-    /// Start listening on the manifestified socket path using SOCK_DGRAM
+    // Store socket information for the server
+    private var serverSocketFD: Int32 = -1
+    private var currentSocketPath: String = ""
+    
+    /// Start listening on the manifestified socket path using SOCK_DGRAM (non-blocking startup)
     public func startListening(_ socketPath: String) async throws {
         isRunning = true
         
@@ -183,6 +187,27 @@ public class JanusServer {
         let flags = fcntl(socketFD, F_GETFL, 0)
         fcntl(socketFD, F_SETFL, flags | O_NONBLOCK)
         
+        // Store socket information
+        self.serverSocketFD = socketFD
+        self.currentSocketPath = socketPath
+        
+        print("Ready to receive datagrams")
+        eventEmitter.emit("listening", data: ["socketPath": socketPath])
+        
+        // Start message processing in background task
+        Task {
+            await self.processMessages()
+        }
+        
+        // Return immediately after successful setup
+        print("Swift server startup complete")
+    }
+    
+    /// Process incoming messages in a background loop
+    private func processMessages() async {
+        let socketFD = self.serverSocketFD
+        let socketPath = self.currentSocketPath
+        
         defer {
             debugLog("Server defer block executing - closing socket and cleaning up")
             Darwin.close(socketFD)
@@ -193,9 +218,6 @@ public class JanusServer {
                 debugLog("Socket file exists after cleanup: \(exists)")
             }
         }
-        
-        print("Ready to receive datagrams")
-        eventEmitter.emit("listening", data: ["socketPath": socketPath])
         
         // Receive datagrams (extracted from main binary)
         while isRunning {
@@ -256,10 +278,11 @@ public class JanusServer {
         debugLog("Server loop completed, isRunning: \(isRunning)")
     }
     
-    /// Stop the server
+    /// Stop the server gracefully
     public func stop() {
         debugLog("Server.stop() called, setting isRunning = false")
         isRunning = false
+        print("Swift server stopping...")
     }
     
     // MARK: - Private Implementation (extracted from main binary)
