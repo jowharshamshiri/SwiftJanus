@@ -1,4 +1,8 @@
 import Foundation
+import os.log
+
+// MARK: - Logging
+private let logger = Logger(subsystem: "com.janus.swift", category: "server")
 
 /// Request handler function type for SOCK_DGRAM server
 /// Updated to support direct value responses (not just dictionaries) for protocol compliance
@@ -126,22 +130,22 @@ public class JanusServer {
     public func startListening(_ socketPath: String) async throws {
         isRunning = true
         
-        print("Starting SOCK_DGRAM server on: \(socketPath)")
+        logger.info("Starting SOCK_DGRAM server on: \(socketPath)")
         
         // Socket cleanup on start if configured
         if config.cleanupOnStart {
-            print("Cleaning up existing socket file")
+            logger.debug("Cleaning up existing socket file")
             try? FileManager.default.removeItem(atPath: socketPath)
         }
         
         // Create SOCK_DGRAM socket
-        print("Creating socket...")
+        logger.debug("Creating socket...")
         let socketFD = Darwin.socket(AF_UNIX, SOCK_DGRAM, 0)
         guard socketFD != -1 else {
-            print("Failed to create socket, errno: \(errno)")
+            logger.error("Failed to create socket, errno: \(errno)")
             throw JSONRPCError.create(code: .socketError, details: "Failed to create socket")
         }
-        print("Socket created with FD: \(socketFD)")
+        logger.debug("Socket created with FD: \(socketFD)")
         
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
