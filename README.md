@@ -41,59 +41,40 @@ dependencies: [
 
 ## Usage
 
-### API Manifest (Manifest)
+### API Manifest
 
-Before creating servers or clients, you need a Manifest file defining your API:
+Before creating servers or clients, you need a manifest file defining your API:
 
 **my-api-manifest.json:**
 ```json
 {
   "name": "My Application API",
-  "version": "1.0.0",
+  "version": "1.0.0", 
   "description": "Example API for demonstration",
-  "channels": {
-    "default": {
-      "requests": {
-        "get_user": {
-          "description": "Retrieve user information",
-          "arguments": {
-            "user_id": {
-              "type": "string",
-              "required": true,
-              "description": "User identifier"
-            }
-          },
-          "response": {
-            "type": "object",
-            "properties": {
-              "id": {"type": "string"},
-              "name": {"type": "string"},
-              "email": {"type": "string"}
-            }
-          }
-        },
-        "update_profile": {
-          "description": "Update user profile",
-          "arguments": {
-            "user_id": {"type": "string", "required": true},
-            "name": {"type": "string", "required": false},
-            "email": {"type": "string", "required": false}
-          },
-          "response": {
-            "type": "object",
-            "properties": {
-              "success": {"type": "boolean"},
-              "updated_fields": {"type": "array"}
-            }
-          }
+  "models": {
+    "GetUserRequest": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "string",
+          "description": "User identifier"
         }
+      },
+      "required": ["user_id"]
+    },
+    "GetUserResponse": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "email": {"type": "string"}
       }
     }
   }
 }
 ```
 
-**Note**: Built-in requests (`ping`, `echo`, `get_info`, `validate`, `slow_process`, `manifest`) are always available and cannot be overridden in Manifests.
+**Note**: Built-in requests (`ping`, `echo`, `get_info`, `validate`, `slow_process`, `manifest`) are always available and cannot be overridden in manifests.
 
 ### Simple Client Example
 
@@ -101,10 +82,7 @@ Before creating servers or clients, you need a Manifest file defining your API:
 import SwiftJanus
 
 // Create client - manifest is fetched automatically from server
-let client = try await JanusClient(
-    socketPath: "/tmp/my-server.sock",
-    channelId: "default"
-)
+let client = try await JanusClient(socketPath: "/tmp/my-server.sock")
 
 // Built-in requests (always available)
 let response = try await client.sendRequest("ping")
@@ -112,7 +90,7 @@ if response.success {
     print("Server ping: \(response.result?.value ?? "nil")")
 }
 
-// Custom request defined in Manifest (arguments validated automatically)
+// Custom request defined in manifest (arguments validated automatically)
 let userArgs: [String: AnyCodable] = [
     "user_id": AnyCodable("user123")
 ]
@@ -174,12 +152,12 @@ import SwiftJanus
 @main
 struct ServerApp {
     static func main() async throws {
-        // Load API manifest from Manifest file
-        let server = try JanusServer.fromManifestFile("my-api-manifest.json")
+        // Create server
+        let server = JanusServer()
         
-        // Register handlers for requests defined in the Manifest
-        server.registerHandler("get_user") { cmd in
-            guard let args = cmd.args,
+        // Register handlers for custom requests defined in the manifest
+        server.registerHandler("get_user") { request in
+            guard let args = request.args,
                   let userId = args["user_id"] as? String else {
                 return .failure(JSONRPCError(
                     code: JSONRPCErrorCode.invalidParams,
@@ -195,8 +173,8 @@ struct ServerApp {
             ])
         }
         
-        server.registerHandler("update_profile") { cmd in
-            guard let args = cmd.args,
+        server.registerHandler("update_profile") { request in
+            guard let args = request.args,
                   args["user_id"] != nil else {
                 return .failure(JSONRPCError(
                     code: JSONRPCErrorCode.invalidParams,
@@ -241,10 +219,7 @@ import SwiftJanus
 struct ClientApp {
     static func main() async throws {
         // Create client - manifest is fetched automatically from server
-        let client = try await JanusClient(
-            socketPath: "/tmp/my-server.sock",
-            channelId: "default"
-        )
+        let client = try await JanusClient(socketPath: "/tmp/my-server.sock")
         
         // Built-in requests (always available)
         let response = try await client.sendRequest("ping")
@@ -252,7 +227,7 @@ struct ClientApp {
             print("Server ping: \(response.result?.value ?? "nil")")
         }
         
-        // Custom request defined in Manifest (arguments validated automatically)
+        // Custom request defined in manifest (arguments validated automatically)
         let userArgs: [String: AnyCodable] = [
             "user_id": AnyCodable("user123")
         ]
@@ -264,22 +239,9 @@ struct ClientApp {
             print("Error: \(userResponse.error?.message ?? "Unknown error")")
         }
         
-        // Fire-and-forget request
-        let logArgs: [String: AnyCodable] = [
-            "level": AnyCodable("info"),
-            "message": AnyCodable("User profile updated")
-        ]
-        
-        try await client.sendRequestNoResponse("log_event", args: logArgs)
-        
         // Get server API manifest
         let manifestResponse = try await client.sendRequest("manifest")
         print("Server API manifest: \(manifestResponse.result?.value ?? "nil")")
-        
-        // Test connectivity
-        if await client.ping() {
-            print("Server is responsive")
-        }
     }
 }
 ```
